@@ -232,30 +232,56 @@ export class GameEngine {
     autoCashout?: number;
   }): Promise<{ balance: number; bet: PublicBet }> {
     if (this.phase !== 'betting') throw new Error('Betting is closed for this round');
-    if (params.amount < env.game.minBet || params.amount > env.game.maxBet) {
+
+    // Validate ALL inputs up front, before any balance is debited. Previously a
+    // bad autoCashout (or a non-finite amount) was caught only at Bet.create —
+    // after the stake had already been deducted — losing the user's money.
+    const { amount, autoCashout } = params;
+    if (typeof amount !== 'number' || !Number.isFinite(amount)) {
+      throw new Error('Invalid bet amount');
+    }
+    if (amount < env.game.minBet || amount > env.game.maxBet) {
       throw new Error(`Bet must be between ${env.game.minBet} and ${env.game.maxBet}`);
+    }
+    if (autoCashout !== undefined) {
+      if (typeof autoCashout !== 'number' || !Number.isFinite(autoCashout) || autoCashout < 1.01) {
+        throw new Error('Auto-cashout must be at least 1.01x');
+      }
     }
     const key = `${params.userId}:${params.slot}`;
     if (this.liveBets.has(key)) throw new Error('You already placed a bet on this slot');
 
     const balance = await adjustBalance({
       userId: params.userId,
-      amount: -params.amount,
+      amount: -amount,
       type: 'bet',
       description: `Bet on round ${this.roundId}`,
       reference: String(this.roundId),
     });
 
-    const betDoc = await Bet.create({
-      userId: params.userId,
-      username: params.username,
-      roundId: this.roundId,
-      slot: params.slot,
-      amount: params.amount,
-      autoCashout: params.autoCashout,
-      isAutoCashout: Boolean(params.autoCashout),
-      status: 'pending',
-    });
+    // If bet creation fails for any reason, refund the stake (atomicity guard).
+    let betDoc;
+    try {
+      betDoc = await Bet.create({
+        userId: params.userId,
+        username: params.username,
+        roundId: this.roundId,
+        slot: params.slot,
+        amount,
+        autoCashout,
+        isAutoCashout: Boolean(autoCashout),
+        status: 'pending',
+      });
+    } catch (err) {
+      await adjustBalance({
+        userId: params.userId,
+        amount,
+        type: 'refund',
+        description: `Refund — failed bet on round ${this.roundId}`,
+        reference: String(this.roundId),
+      });
+      throw new Error('Could not place bet — your stake was refunded');
+    }
 
     const live: LiveBet = {
       betId: String(betDoc._id),
