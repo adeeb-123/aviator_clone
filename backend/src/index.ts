@@ -9,6 +9,16 @@ import { setupSocket } from './socket';
 import { logger } from './utils/logger';
 
 export async function bootstrap(): Promise<void> {
+  // Keep the process alive on transient async errors. The game loop fires several
+  // background promises (DB writes, cashouts); a single rejection would otherwise
+  // crash Node and trigger a restart loop on the host. Log loudly instead.
+  process.on('unhandledRejection', (reason) => {
+    logger.error({ reason: reason instanceof Error ? reason.message : reason }, 'Unhandled promise rejection');
+  });
+  process.on('uncaughtException', (err) => {
+    logger.error({ err: err.message, stack: err.stack }, 'Uncaught exception');
+  });
+
   await connectDB();
   await connectRedis();
 
