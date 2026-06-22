@@ -1,0 +1,62 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background: #0a0a12;
+  color: #e7e7f0;
+  min-height: 100%;
+}
+
+body {
+  background-image:
+    radial-gradient(circle at 20% -10%, rgba(124, 58, 237, 0.22), transparent 45%),
+    radial-gradient(circle at 90% 0%, rgba(34, 211, 154, 0.1), transparent 40%);
+  background-attachment: fixed;
+}
+
+/* glassmorphism card */
+.glass {
+  background: rgba(24, 24, 38, 0.55);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 1rem;
+}
+
+.btn {
+  @apply rounded-lg px-4 py-2 font-semibold transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed;
+}
+.btn-primary {
+  @apply btn text-white;
+  background: linear-gradient(135deg, #7c3aed, #a855f7);
+  box-shadow: 0 8px 30px -8px rgba(168, 85, 247, 0.6);
+}
+.btn-win {
+  @apply btn text-base-900;
+  background: linear-gradient(135deg, #22d39a, #16b67f);
+}
+.btn-loss {
+  @apply btn text-white;
+  background: linear-gradient(135deg, #ef4444, #b91c1c);
+}
+.input {
+  @apply w-full rounded-lg bg-base-700/70 border border-white/10 px-3 py-2 outline-none focus:border-accent-glow transition;
+}
+
+/* thin scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(124, 58, 237, 0.4);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
