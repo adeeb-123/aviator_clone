@@ -83,9 +83,9 @@ export default function AdminPage() {
             [
               ['Users', dash.totals.users],
               ['Rounds', dash.totals.rounds],
-              ['Wagered', dash.totals.wagered.toFixed(0)],
-              ['Payout', dash.totals.payout.toFixed(0)],
-              ['Revenue', dash.totals.revenue.toFixed(0)],
+              ['Wagered', '₹' + dash.totals.wagered.toFixed(0)],
+              ['Payout', '₹' + dash.totals.payout.toFixed(0)],
+              ['Revenue', '₹' + dash.totals.revenue.toFixed(0)],
             ].map(([label, val]) => (
               <div key={label as string} className="glass p-4">
                 <div className="text-xs uppercase tracking-widest text-white/40">{label}</div>
@@ -148,13 +148,13 @@ export default function AdminPage() {
               {users.map((u) => (
                 <div key={u._id} className="flex items-center justify-between rounded bg-base-700/40 px-2 py-1.5">
                   <span className="flex-1 truncate">
-                    {u.username} <span className="text-white/30">· {u.balance.toFixed(0)}</span>
+                    {u.username} <span className="text-white/30">· ₹{u.balance.toFixed(0)}</span>
                   </span>
                   <button
                     className="btn bg-base-600 px-2 py-1 text-xs"
                     onClick={() => act(() => api.post('/admin/balance', { userId: u._id, amount: 100, reason: 'Admin grant' }), 'Grant 100')}
                   >
-                    +100
+                    +₹100
                   </button>
                   <button
                     className={`btn px-2 py-1 text-xs ${u.isBanned ? 'btn-win' : 'btn-loss'}`}

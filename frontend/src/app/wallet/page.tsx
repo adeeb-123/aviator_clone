@@ -53,7 +53,7 @@ export default function WalletPage() {
         <h1 className="text-3xl font-black">Wallet</h1>
         <div className="glass p-6">
           <div className="text-sm text-white/50">Current balance</div>
-          <div className="text-4xl font-black text-win">{user?.balance.toFixed(2) ?? '0.00'}</div>
+          <div className="text-4xl font-black text-win">₹{user?.balance.toFixed(2) ?? '0.00'}</div>
 
           <div className="mt-4 flex items-center gap-2">
             <input
@@ -86,8 +86,8 @@ export default function WalletPage() {
                 <span className="capitalize text-white/60">{t.type}</span>
                 <span className="flex-1 truncate px-3 text-white/40">{t.description}</span>
                 <span className={t.amount >= 0 ? 'text-win' : 'text-loss'}>
-                  {t.amount >= 0 ? '+' : ''}
-                  {t.amount.toFixed(2)}
+                  {t.amount >= 0 ? '+₹' : '-₹'}
+                  {Math.abs(t.amount).toFixed(2)}
                 </span>
               </div>
             ))}

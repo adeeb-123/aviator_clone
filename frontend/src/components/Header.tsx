@@ -37,7 +37,7 @@ export default function Header() {
             <>
               <div className="glass px-3 py-1.5 text-sm">
                 <span className="text-white/40">Balance </span>
-                <span className="font-bold text-win">{user.balance.toFixed(2)}</span>
+                <span className="font-bold text-win">₹{user.balance.toFixed(2)}</span>
               </div>
               <Link href="/wallet" className="btn-primary text-sm">
                 Wallet

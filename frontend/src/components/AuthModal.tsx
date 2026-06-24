@@ -151,7 +151,7 @@ export default function AuthModal({ open, onClose }: Props) {
                 </button>
               </p>
             ) : (
-              <p className="mt-3 text-center text-xs text-white/40">Get 100 free credits on signup 🎁</p>
+              <p className="mt-3 text-center text-xs text-white/40">Get ₹100 free credits on signup 🎁</p>
             )}
           </motion.div>
         </motion.div>

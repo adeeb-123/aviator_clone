@@ -71,7 +71,7 @@ export default function BetPanel({ slot }: Props) {
 
   const canBet = phase === 'betting' && !placed;
   const canCashout = phase === 'running' && placed && cashedAt === null;
-  const potential = (amount * multiplier).toFixed(2);
+  const potential = '₹' + (amount * multiplier).toFixed(2);
 
   return (
     <div className="glass p-4">
@@ -135,7 +135,7 @@ export default function BetPanel({ slot }: Props) {
           <div className="btn w-full bg-base-600 text-center text-white/70">Waiting for round…</div>
         ) : (
           <button className="btn-primary w-full text-lg" onClick={place} disabled={!canBet}>
-            Bet {amount.toFixed(2)}
+            Bet ₹{amount.toFixed(2)}
           </button>
         )}
       </div>

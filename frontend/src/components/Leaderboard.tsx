@@ -56,7 +56,7 @@ export default function Leaderboard() {
             <span className="w-6 text-center">{medal(i)}</span>
             <span className="flex-1 truncate px-2 text-white/80">{e.username}</span>
             <span className="text-xs text-white/40">{e.bestMultiplier?.toFixed(2)}x</span>
-            <span className="ml-2 font-bold text-win">+{e.totalPayout.toFixed(0)}</span>
+            <span className="ml-2 font-bold text-win">+₹{e.totalPayout.toFixed(0)}</span>
           </div>
         ))}
       </div>

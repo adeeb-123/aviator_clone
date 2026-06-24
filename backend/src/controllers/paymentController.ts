@@ -22,7 +22,7 @@ export const createCheckout = asyncHandler(async (req: Request, res: Response) =
     line_items: [
       {
         price_data: {
-          currency: 'usd',
+          currency: 'inr',
           product_data: { name: 'Aviator credits' },
           unit_amount: Math.round(amount * 100),
         },

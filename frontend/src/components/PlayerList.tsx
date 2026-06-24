@@ -11,7 +11,7 @@ export default function PlayerList() {
       <div className="mb-2 flex items-center justify-between">
         <h3 className="font-semibold">Live Bets</h3>
         <span className="text-xs text-white/50">
-          {players.length} players · {total.toFixed(0)} wagered
+          {players.length} players · ₹{total.toFixed(0)} wagered
         </span>
       </div>
       <div className="flex-1 space-y-1 overflow-y-auto">
@@ -24,7 +24,7 @@ export default function PlayerList() {
             }`}
           >
             <span className="truncate text-white/80">{p.username}</span>
-            <span className="text-white/50">{p.amount.toFixed(2)}</span>
+            <span className="text-white/50">₹{p.amount.toFixed(2)}</span>
             <span className={p.status === 'cashed-out' ? 'font-bold text-win' : 'text-white/30'}>
               {p.cashoutMultiplier ? `${p.cashoutMultiplier.toFixed(2)}x` : '—'}
             </span>
