@@ -251,15 +251,36 @@ export class GameEngine {
     const key = `${params.userId}:${params.slot}`;
     if (this.liveBets.has(key)) throw new Error('You already placed a bet on this slot');
 
-    const balance = await adjustBalance({
+    // Reserve the slot SYNCHRONOUSLY before any await. JS is single-threaded, so a
+    // concurrent duplicate request (double-click / two tabs) now sees this entry
+    // and is rejected — preventing the TOCTOU double-debit + orphaned bet.
+    const live: LiveBet = {
+      betId: '',
       userId: params.userId,
-      amount: -amount,
-      type: 'bet',
-      description: `Bet on round ${this.roundId}`,
-      reference: String(this.roundId),
-    });
+      username: params.username,
+      slot: params.slot,
+      amount,
+      autoCashout,
+      payout: 0,
+      status: 'pending',
+    };
+    this.liveBets.set(key, live);
 
-    // If bet creation fails for any reason, refund the stake (atomicity guard).
+    let balance: number;
+    try {
+      balance = await adjustBalance({
+        userId: params.userId,
+        amount: -amount,
+        type: 'bet',
+        description: `Bet on round ${this.roundId}`,
+        reference: String(this.roundId),
+      });
+    } catch (err) {
+      this.liveBets.delete(key); // release reservation on debit failure (e.g. insufficient funds)
+      throw err;
+    }
+
+    // If bet creation fails for any reason, refund the stake and release the slot.
     let betDoc;
     try {
       betDoc = await Bet.create({
@@ -280,20 +301,11 @@ export class GameEngine {
         description: `Refund — failed bet on round ${this.roundId}`,
         reference: String(this.roundId),
       });
+      this.liveBets.delete(key);
       throw new Error('Could not place bet — your stake was refunded');
     }
 
-    const live: LiveBet = {
-      betId: String(betDoc._id),
-      userId: params.userId,
-      username: params.username,
-      slot: params.slot,
-      amount: params.amount,
-      autoCashout: params.autoCashout,
-      payout: 0,
-      status: 'pending',
-    };
-    this.liveBets.set(key, live);
+    live.betId = String(betDoc._id);
 
     const publicBet: PublicBet = {
       username: live.username,
