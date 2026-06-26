@@ -2,6 +2,7 @@ import { Router } from 'express';
 import * as ctrl from '../controllers/adminController';
 import * as analytics from '../controllers/analyticsController';
 import * as alerts from '../controllers/alertController';
+import * as tournaments from '../controllers/tournamentController';
 import { authenticate, requireAdmin } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { adminAdjustSchema, adminCrashSchema } from '../validators/schemas';
@@ -42,6 +43,12 @@ router.delete('/chat/:id', ctrl.deleteChatMessage);
 router.get('/promos', ctrl.listPromos);
 router.post('/promos', ctrl.createPromo);
 router.patch('/promos/:id', ctrl.updatePromo);
+
+// ── tournaments ──
+router.get('/tournaments', tournaments.adminList);
+router.post('/tournaments', tournaments.adminCreate);
+router.post('/tournaments/:id/end', tournaments.adminEnd);
+router.delete('/tournaments/:id', tournaments.adminDelete);
 
 router.get('/game/status', ctrl.gameStatus);
 router.post('/game/pause', ctrl.pauseGame);

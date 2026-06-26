@@ -120,6 +120,34 @@ export interface PromoCodeRow {
   createdAt: string;
 }
 
+export interface TournamentStanding {
+  rank: number;
+  userId: string;
+  username: string;
+  wagered: number;
+  profit: number;
+  wins: number;
+  multiplier: number;
+  score: number;
+}
+
+export interface TournamentWinner { rank: number; username: string; score: number; prize: number }
+
+export interface Tournament {
+  _id: string;
+  name: string;
+  metric: 'wagered' | 'profit' | 'wins' | 'multiplier';
+  metricLabel?: string;
+  startAt: string;
+  endAt: string;
+  prizes: number[];
+  prizePool?: number;
+  status: 'scheduled' | 'active' | 'ended';
+  paidOut: boolean;
+  winners: TournamentWinner[];
+  standings?: TournamentStanding[];
+}
+
 export type GamePhase = 'idle' | 'betting' | 'running' | 'crashed';
 
 export interface PublicBet {

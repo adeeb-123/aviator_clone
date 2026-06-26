@@ -18,6 +18,7 @@ export default function Header() {
     <>
       <Link href="/" className="hover:text-white" onClick={() => setMenuOpen(false)}>Play</Link>
       {user && <Link href="/rewards" className="hover:text-white" onClick={() => setMenuOpen(false)}>🎁 Rewards</Link>}
+      {user && <Link href="/tournaments" className="hover:text-white" onClick={() => setMenuOpen(false)}>🏆 Tournaments</Link>}
       {user && <Link href="/stats" className="hover:text-white" onClick={() => setMenuOpen(false)}>My Stats</Link>}
       {user && <Link href="/history" className="hover:text-white md:hidden" onClick={() => setMenuOpen(false)}>History</Link>}
       {user && <Link href="/profile" className="hover:text-white md:hidden" onClick={() => setMenuOpen(false)}>Profile</Link>}

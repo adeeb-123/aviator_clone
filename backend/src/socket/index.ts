@@ -101,7 +101,7 @@ export async function setupSocket(io: Server): Promise<void> {
       try {
         if (!socket.authUser) throw new Error('Login required');
         if (rateLimited(socket, EVENTS.CASHOUT)) throw new Error('Too many requests — slow down');
-        const result = await engine.cashout(socket.authUser.id, data.slot === 2 ? 2 : 1);
+        const result = await engine.cashout(socket.authUser.id, data.slot === 2 ? 2 : 1, data.fraction ? Number(data.fraction) : 1);
         ack?.({ ok: true, ...result });
       } catch (err) {
         ack?.({ ok: false, error: (err as Error).message });

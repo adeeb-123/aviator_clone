@@ -14,6 +14,16 @@ interface Props {
 
 const QUICK = [10, 50, 100, 500];
 
+type Strategy = 'flat' | 'martingale' | 'fib' | 'dalembert';
+const STRATEGIES: { id: Strategy; label: string }[] = [
+  { id: 'flat', label: 'Flat' },
+  { id: 'martingale', label: 'Martingale ×2' },
+  { id: 'fib', label: 'Fibonacci' },
+  { id: 'dalembert', label: "D'Alembert" },
+];
+// fib(0)=1, fib(1)=1, fib(2)=2, fib(3)=3, fib(4)=5 …
+const fib = (n: number): number => { let a = 1, b = 1; for (let i = 0; i < n; i++) { [a, b] = [b, a + b]; } return a; };
+
 export default function BetPanel({ slot }: Props) {
   const user = useAuth((s) => s.user);
   const setBalance = useAuth((s) => s.setBalance);
@@ -32,13 +42,13 @@ export default function BetPanel({ slot }: Props) {
   // ── auto-bet config + running state ──
   const [autoRunning, setAutoRunning] = useState(false);
   const [rounds, setRounds] = useState('');
-  const [onLoss, setOnLoss] = useState<'reset' | 'x2'>('reset');
+  const [strategy, setStrategy] = useState<Strategy>('flat');
   const [stopProfit, setStopProfit] = useState('');
   const [stopLoss, setStopLoss] = useState('');
   const [sessionPL, setSessionPL] = useState(0);
 
   // refs so socket callbacks read current values
-  const r = useRef({ running: false, placed: false, stake: 0, won: false, payout: 0, pl: 0, cur: 10, base: 10, roundsLeft: -1, stopP: 0, stopL: 0, target: 2 });
+  const r = useRef({ running: false, placed: false, stake: 0, won: false, payout: 0, pl: 0, cur: 10, base: 10, roundsLeft: -1, stopP: 0, stopL: 0, target: 2, strat: 'flat' as Strategy, units: 1, fibIdx: 0 });
 
   // ── saved strategies (favorites) ──
   const [favorites, setFavorites] = useState<FavoriteStrategy[]>([]);
@@ -75,8 +85,12 @@ export default function BetPanel({ slot }: Props) {
       const pl = won ? r.current.payout - r.current.stake : -r.current.stake;
       r.current.pl += pl;
       setSessionPL(r.current.pl);
-      // next stake
-      r.current.cur = won ? r.current.base : onLoss === 'x2' ? +(r.current.cur * 2).toFixed(2) : r.current.base;
+      // next stake per strategy
+      const base = r.current.base;
+      if (r.current.strat === 'martingale') r.current.cur = won ? base : +(r.current.cur * 2).toFixed(2);
+      else if (r.current.strat === 'dalembert') { r.current.units = won ? Math.max(1, r.current.units - 1) : r.current.units + 1; r.current.cur = +(r.current.units * base).toFixed(2); }
+      else if (r.current.strat === 'fib') { r.current.fibIdx = won ? Math.max(0, r.current.fibIdx - 2) : r.current.fibIdx + 1; r.current.cur = +(fib(r.current.fibIdx) * base).toFixed(2); }
+      else r.current.cur = base; // flat
       setAmount(r.current.cur);
       if (r.current.roundsLeft > 0) r.current.roundsLeft -= 1;
       const stop = r.current.roundsLeft === 0 || (r.current.stopP > 0 && r.current.pl >= r.current.stopP) || (r.current.stopL > 0 && r.current.pl <= -r.current.stopL);
@@ -87,7 +101,7 @@ export default function BetPanel({ slot }: Props) {
     s.on(EVENTS.ROUND_CRASHED, onCrash);
     return () => { s.off(EVENTS.BET_CASHOUT, onCash); s.off(EVENTS.ROUND_CRASHED, onCrash); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.username, slot, onLoss]);
+  }, [user?.username, slot]);
 
   // ── auto-bet placement loop ──
   useEffect(() => {
@@ -108,7 +122,7 @@ export default function BetPanel({ slot }: Props) {
     if (!user) { setMsg('Please log in'); return; }
     const target = Number(autoCashout);
     if (!(target >= 1.01)) { setMsg('Set an auto-cashout ≥ 1.01'); return; }
-    r.current = { running: true, placed: false, stake: 0, won: false, payout: 0, pl: 0, cur: amount, base: amount, roundsLeft: rounds ? Math.max(1, Math.floor(Number(rounds))) : -1, stopP: Number(stopProfit) || 0, stopL: Number(stopLoss) || 0, target };
+    r.current = { running: true, placed: false, stake: 0, won: false, payout: 0, pl: 0, cur: amount, base: amount, roundsLeft: rounds ? Math.max(1, Math.floor(Number(rounds))) : -1, stopP: Number(stopProfit) || 0, stopL: Number(stopLoss) || 0, target, strat: strategy, units: 1, fibIdx: 0 };
     setSessionPL(0);
     setAutoRunning(true);
   };
@@ -122,10 +136,13 @@ export default function BetPanel({ slot }: Props) {
       else setMsg(res.error ?? 'Bet failed');
     });
   };
-  const cashout = () => {
-    getSocket().emit(EVENTS.CASHOUT, { slot }, (res: { ok: boolean; payout?: number; multiplier?: number; balance?: number; error?: string }) => {
-      if (res.ok) { setCashedAt(res.multiplier ?? null); if (res.balance !== undefined) setBalance(res.balance); setPlaced(false); sound.cashout(); }
-      else setMsg(res.error ?? 'Cashout failed');
+  const cashout = (fraction = 1) => {
+    getSocket().emit(EVENTS.CASHOUT, { slot, fraction }, (res: { ok: boolean; payout?: number; multiplier?: number; balance?: number; remaining?: number; fullyCashed?: boolean; error?: string }) => {
+      if (res.ok) {
+        if (res.balance !== undefined) setBalance(res.balance); sound.cashout();
+        if (res.fullyCashed) { setCashedAt(res.multiplier ?? null); setPlaced(false); }
+        else setMsg(`Banked ₹${(res.payout ?? 0).toFixed(2)} · ₹${(res.remaining ?? 0).toFixed(2)} still riding`);
+      } else setMsg(res.error ?? 'Cashout failed');
     });
   };
 
@@ -179,10 +196,10 @@ export default function BetPanel({ slot }: Props) {
             <input type="number" min={1} placeholder="∞" disabled={lock} value={rounds} onChange={(e) => setRounds(e.target.value)} className="input max-w-[90px] py-1 text-right" />
           </div>
           <div className="flex items-center justify-between gap-2">
-            <span className="text-white/50">On loss</span>
-            <div className="flex gap-1">
-              {(['reset', 'x2'] as const).map((o) => <button key={o} disabled={lock} onClick={() => setOnLoss(o)} className={`rounded px-2 py-1 ${onLoss === o ? 'bg-accent text-white' : 'bg-base-600 text-white/60'}`}>{o === 'reset' ? 'Reset' : '×2'}</button>)}
-            </div>
+            <span className="text-white/50">Strategy</span>
+            <select disabled={lock} value={strategy} onChange={(e) => setStrategy(e.target.value as Strategy)} className="input max-w-[150px] py-1 text-xs">
+              {STRATEGIES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+            </select>
           </div>
           <div className="flex items-center justify-between gap-2">
             <span className="text-white/50">Stop if profit ≥ ₹</span>
@@ -210,7 +227,10 @@ export default function BetPanel({ slot }: Props) {
             <button className="btn-primary w-full text-lg" onClick={startAuto}>▶ Start auto-bet</button>
           )
         ) : canCashout ? (
-          <motion.button className="btn-win w-full text-lg" onClick={cashout} animate={{ scale: [1, 1.02, 1] }} transition={{ repeat: Infinity, duration: 0.5 }}>Cash Out {potential}</motion.button>
+          <div className="flex gap-2">
+            <motion.button className="btn-win flex-1 text-lg" onClick={() => cashout(1)} animate={{ scale: [1, 1.02, 1] }} transition={{ repeat: Infinity, duration: 0.5 }}>Cash Out {potential}</motion.button>
+            <button className="btn bg-base-600 px-3 text-sm font-bold text-white" title="Cash out half, let the rest ride" onClick={() => cashout(0.5)}>½</button>
+          </div>
         ) : cashedAt ? (
           <div className="btn-win w-full text-center text-lg">Cashed @ {cashedAt.toFixed(2)}x 🎉</div>
         ) : placed ? (

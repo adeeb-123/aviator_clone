@@ -11,6 +11,7 @@ import authRoutes from './routes/auth';
 import userRoutes from './routes/user';
 import gameRoutes from './routes/game';
 import adminRoutes from './routes/admin';
+import tournamentRoutes from './routes/tournament';
 import paymentRoutes from './routes/payment';
 
 export function createApp(): Application {
@@ -38,6 +39,7 @@ export function createApp(): Application {
   app.use('/api/users', userRoutes);
   app.use('/api/game', gameRoutes);
   app.use('/api/admin', adminRoutes);
+  app.use('/api/tournaments', tournamentRoutes);
   app.use('/api/payments', paymentRoutes);
 
   app.use(notFoundHandler);

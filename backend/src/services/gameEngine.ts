@@ -20,9 +20,10 @@ interface LiveBet {
   username: string;
   slot: 1 | 2;
   amount: number;
+  remaining: number; // un-cashed stake still riding (supports partial cash-out)
   autoCashout?: number;
   cashoutMultiplier?: number;
-  payout: number;
+  payout: number; // cumulative realised payout
   status: 'pending' | 'cashed-out' | 'lost';
 }
 
@@ -224,7 +225,7 @@ export class GameEngine {
       // have triggered first) at their target, then crash.
       for (const bet of this.liveBets.values()) {
         if (bet.status === 'pending' && bet.autoCashout && bet.autoCashout < this.crashPoint) {
-          void this.settleCashout(bet, bet.autoCashout, true);
+          void this.settleCashout(bet, bet.autoCashout!, bet.remaining, true, true);
         }
       }
       void this.crash();
@@ -234,7 +235,7 @@ export class GameEngine {
     // auto-cashout sweep
     for (const bet of this.liveBets.values()) {
       if (bet.status === 'pending' && bet.autoCashout && multiplier >= bet.autoCashout) {
-        void this.settleCashout(bet, bet.autoCashout, true);
+        void this.settleCashout(bet, bet.autoCashout!, bet.remaining, true, true);
       }
     }
 
@@ -246,13 +247,16 @@ export class GameEngine {
     this.phase = 'crashed';
     if (this.tickTimer) clearInterval(this.tickTimer);
 
-    // Any still-pending bet loses.
+    // Any still-pending stake loses. A partially-cashed bet keeps what it already
+    // banked (bet.payout) — it counts as cashed-out; a fully-pending bet loses all.
     const losers: Promise<unknown>[] = [];
     for (const bet of this.liveBets.values()) {
       if (bet.status === 'pending') {
-        bet.status = 'lost';
+        const cashedSomething = bet.payout > 0;
+        bet.status = cashedSomething ? 'cashed-out' : 'lost';
+        bet.remaining = 0;
         losers.push(
-          Bet.updateOne({ _id: bet.betId }, { status: 'lost', payout: 0 }).exec(),
+          Bet.updateOne({ _id: bet.betId }, { status: bet.status, payout: bet.payout }).exec(),
         );
       }
     }
@@ -323,6 +327,7 @@ export class GameEngine {
       username: params.username,
       slot: params.slot,
       amount,
+      remaining: amount,
       autoCashout,
       payout: 0,
       status: 'pending',
@@ -385,11 +390,15 @@ export class GameEngine {
     return { balance, bet: publicBet };
   }
 
-  async cashout(userId: string, slot: 1 | 2): Promise<{ payout: number; multiplier: number; balance: number }> {
+  /**
+   * Cash out all or part of a bet. `fraction` (0–1] cashes that share of the
+   * remaining stake; the rest keeps riding. fraction >= 1 cashes everything.
+   */
+  async cashout(userId: string, slot: 1 | 2, fraction = 1): Promise<{ payout: number; multiplier: number; balance: number; remaining: number; fullyCashed: boolean }> {
     if (this.phase !== 'running') throw new Error('Cannot cash out right now');
     const key = `${userId}:${slot}`;
     const bet = this.liveBets.get(key);
-    if (!bet || bet.status !== 'pending') throw new Error('No active bet to cash out');
+    if (!bet || bet.status !== 'pending' || bet.remaining <= 0) throw new Error('No active bet to cash out');
 
     const multiplier = this.getMultiplierNow();
     // SECURITY: the crash is only detected on 100ms ticks, but this multiplier is
@@ -400,18 +409,28 @@ export class GameEngine {
       void this.crash();
       throw new Error('Round has crashed');
     }
-    const balance = await this.settleCashout(bet, multiplier, false);
-    return { payout: bet.payout, multiplier, balance };
+
+    const f = Number.isFinite(fraction) ? Math.min(1, Math.max(0.01, fraction)) : 1;
+    const stake = f >= 1 ? bet.remaining : Math.floor(bet.remaining * f * 100) / 100;
+    const final = f >= 1 || stake >= bet.remaining - 0.001;
+    const { balance, partPayout } = await this.settleCashout(bet, multiplier, stake, false, final);
+    return { payout: partPayout, multiplier, balance, remaining: bet.remaining, fullyCashed: bet.remaining <= 0 };
   }
 
-  private async settleCashout(bet: LiveBet, multiplier: number, isAuto: boolean): Promise<number> {
-    bet.status = 'cashed-out';
+  /** Settle a `stake` portion of a bet at `multiplier`; closes the bet when `final`. */
+  private async settleCashout(bet: LiveBet, multiplier: number, stake: number, isAuto: boolean, final: boolean): Promise<{ balance: number; partPayout: number }> {
+    const partPayout = Math.floor(stake * multiplier * 100) / 100;
+    bet.payout = Math.round((bet.payout + partPayout) * 100) / 100;
+    bet.remaining = Math.round((bet.remaining - stake) * 100) / 100;
     bet.cashoutMultiplier = multiplier;
-    bet.payout = Math.floor(bet.amount * multiplier * 100) / 100;
+    if (final || bet.remaining <= 0.001) {
+      bet.remaining = 0;
+      bet.status = 'cashed-out';
+    }
 
     const balance = await adjustBalance({
       userId: bet.userId,
-      amount: bet.payout,
+      amount: partPayout,
       type: 'win',
       description: `Cashout @${multiplier}x round ${this.roundId}`,
       reference: String(this.roundId),
@@ -419,21 +438,22 @@ export class GameEngine {
 
     await Bet.updateOne(
       { _id: bet.betId },
-      { status: 'cashed-out', cashoutMultiplier: multiplier, payout: bet.payout, isAutoCashout: isAuto },
+      { status: bet.status, cashoutMultiplier: multiplier, payout: bet.payout, isAutoCashout: isAuto },
     );
 
     this.io.emit(EVENTS.BET_CASHOUT, {
       username: bet.username,
       slot: bet.slot,
       cashoutMultiplier: multiplier,
-      payout: bet.payout,
+      payout: partPayout,
     });
     this.io.to(`user:${bet.userId}`).emit(EVENTS.BALANCE_UPDATE, { balance });
     this.io.emit(EVENTS.PLAYERS_UPDATE, this.publicBets());
 
-    alertBigWin({ userId: bet.userId, username: bet.username, amount: bet.amount, multiplier, payout: bet.payout, roundId: this.roundId });
-
-    return balance;
+    if (bet.status === 'cashed-out') {
+      alertBigWin({ userId: bet.userId, username: bet.username, amount: bet.amount, multiplier, payout: bet.payout, roundId: this.roundId });
+    }
+    return { balance, partPayout };
   }
 
   // ── helpers ──────────────────────────────────────────────
