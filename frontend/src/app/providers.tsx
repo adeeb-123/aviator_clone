@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { getSocket, EVENTS } from '@/lib/socket';
 import { useAuth, useGame } from '@/lib/store';
+import { sound } from '@/lib/sound';
 
 /**
  * Connects the socket once on mount and pipes all game events into the
@@ -44,9 +45,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
     socket.on(EVENTS.ROUND_RUNNING, () => gset({ phase: 'running' }));
     socket.on(EVENTS.ROUND_TICK, (p) => gset({ multiplier: p.multiplier }));
-    socket.on(EVENTS.ROUND_CRASHED, (p) =>
-      gset({ phase: 'crashed', crashPoint: p.crashPoint, multiplier: p.crashPoint }),
-    );
+    socket.on(EVENTS.ROUND_CRASHED, (p) => {
+      gset({ phase: 'crashed', crashPoint: p.crashPoint, multiplier: p.crashPoint });
+      sound.crash();
+    });
     socket.on(EVENTS.ROUND_HISTORY, (h) => gset({ history: h }));
     socket.on(EVENTS.PLAYERS_UPDATE, (players) => gset({ players }));
     socket.on(EVENTS.BALANCE_UPDATE, (p) => setBalance(p.balance));

@@ -9,6 +9,8 @@ router.use(authenticate);
 
 router.get('/me', ctrl.me);
 router.patch('/me', validate(updateProfileSchema), ctrl.updateProfile);
+router.get('/stats', ctrl.getStats);
+router.post('/daily-claim', ctrl.claimDaily);
 router.get('/bets', ctrl.getBetHistory);
 router.get('/transactions', ctrl.getTransactions);
 router.get('/favorites', ctrl.getFavorites);

@@ -51,6 +51,8 @@ export const env = {
     welcomeBonus: parseFloat(process.env.WELCOME_BONUS ?? '100'),
     referralBonus: parseFloat(process.env.REFERRAL_BONUS ?? '25'),
     minDeposit: parseFloat(process.env.MIN_DEPOSIT ?? '50'), // Stripe needs ≈ $0.50 min
+    dailyBase: parseFloat(process.env.DAILY_REWARD_BASE ?? '10'), // ₹ per streak day
+    dailyCap: parseFloat(process.env.DAILY_REWARD_CAP ?? '100'),
   },
 
   // Admin "force crash" overrides provably-fair — keep it ON only in dev/testing.

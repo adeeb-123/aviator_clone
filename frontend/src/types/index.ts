@@ -10,6 +10,30 @@ export interface User {
   vipTier: number;
   referralCode: string;
   favorites: FavoriteStrategy[];
+  dailyStreak?: number;
+  lastDailyClaim?: string;
+}
+
+export interface PlayerStats {
+  bets: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+  wagered: number;
+  won: number;
+  netPL: number;
+  biggestMultiplier: number;
+  biggestWin: number;
+  avgBet: number;
+  winStreak: number;
+}
+
+export interface Badge {
+  id: string;
+  label: string;
+  icon: string;
+  earned: boolean;
+  hint: string;
 }
 
 export interface FavoriteStrategy {

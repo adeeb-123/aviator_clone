@@ -1,14 +1,17 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/store';
+import { sound } from '@/lib/sound';
 import AuthModal from './AuthModal';
 
 export default function Header() {
   const user = useAuth((s) => s.user);
   const logout = useAuth((s) => s.logout);
   const [authOpen, setAuthOpen] = useState(false);
+  const [muted, setMuted] = useState(false);
+  useEffect(() => { setMuted(sound.isMuted()); return sound.subscribe(setMuted); }, []);
 
   return (
     <header className="sticky top-0 z-30 border-b border-white/5 bg-base-900/70 backdrop-blur-lg">
@@ -22,6 +25,11 @@ export default function Header() {
           <Link href="/" className="hover:text-white">
             Play
           </Link>
+          {user && (
+            <Link href="/stats" className="hover:text-white">
+              My Stats
+            </Link>
+          )}
           <Link href="/fairness" className="hover:text-white">
             Provably Fair
           </Link>
@@ -33,6 +41,14 @@ export default function Header() {
         </nav>
 
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => sound.toggle()}
+            aria-label={muted ? 'Unmute' : 'Mute'}
+            title={muted ? 'Sound off' : 'Sound on'}
+            className="rounded-lg bg-base-700 px-2.5 py-1.5 text-sm text-white/70 hover:text-white"
+          >
+            {muted ? '🔇' : '🔊'}
+          </button>
           {user ? (
             <>
               <div className="glass px-3 py-1.5 text-sm">

@@ -8,6 +8,8 @@ import RoundHistory from '@/components/RoundHistory';
 import PlayerList from '@/components/PlayerList';
 import Chat from '@/components/Chat';
 import Leaderboard from '@/components/Leaderboard';
+import LiveWins from '@/components/LiveWins';
+import DailyReward from '@/components/DailyReward';
 import { useGame } from '@/lib/store';
 
 export default function GamePage() {
@@ -21,6 +23,10 @@ export default function GamePage() {
         {/* left column: game — min-w-0 lets the 1fr column shrink so the long
             round-history row scrolls internally instead of overflowing the page */}
         <section className="min-w-0 space-y-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <DailyReward />
+          </div>
+          <LiveWins />
           <div className="glass min-w-0 p-3">
             <RoundHistory />
           </div>

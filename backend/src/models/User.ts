@@ -27,6 +27,8 @@ export interface IUser extends Document {
   referredBy?: Types.ObjectId;
   favorites: FavoriteStrategy[];
   lastActiveAt: Date;
+  dailyStreak: number;
+  lastDailyClaim?: Date;
   createdAt: Date;
   updatedAt: Date;
   setPassword(plain: string): Promise<void>;
@@ -62,6 +64,8 @@ const userSchema = new Schema<IUser>(
     referredBy: { type: Schema.Types.ObjectId, ref: 'User' },
     favorites: { type: [favoriteSchema], default: [] },
     lastActiveAt: { type: Date, default: Date.now },
+    dailyStreak: { type: Number, default: 0 },
+    lastDailyClaim: { type: Date },
   },
   { timestamps: true },
 );
