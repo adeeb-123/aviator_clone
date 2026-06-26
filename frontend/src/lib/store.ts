@@ -90,6 +90,15 @@ export const useGame = create<GameState>((set) => ({
   addChat: (m) => set((s) => ({ chat: [...s.chat.slice(-80), m] })),
 }));
 
+interface GameControlState {
+  forcedCount: number; // active + queued forced crashes (for the tab badge)
+  setForcedCount: (n: number) => void;
+}
+export const useGameControl = create<GameControlState>((set) => ({
+  forcedCount: 0,
+  setForcedCount: (n) => set({ forcedCount: n }),
+}));
+
 interface AlertState {
   alerts: AdminAlert[];
   unread: number;

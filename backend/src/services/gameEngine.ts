@@ -46,6 +46,8 @@ export class GameEngine {
 
   /** Admin override: FIFO queue of forced crash points, applied to successive rounds. */
   private forcedCrashQueue: number[] = [];
+  /** The forced crash point applied to the CURRENT round (null = provably-fair). */
+  private activeForcedCrash: number | null = null;
   private paused = false;
 
   // exponential growth rate (per second). Tuned for a lively but fair curve.
@@ -87,6 +89,7 @@ export class GameEngine {
       roundId: this.roundId,
       multiplier: this.getMultiplierNow(),
       paused: this.paused,
+      activeForcedCrash: this.activeForcedCrash,
       forcedCrashQueue: [...this.forcedCrashQueue],
       running: this.running,
     };
@@ -102,6 +105,11 @@ export class GameEngine {
     if (index >= 0 && index < this.forcedCrashQueue.length) {
       this.forcedCrashQueue.splice(index, 1);
     }
+  }
+
+  /** Replace the queue (used by drag-to-reorder in the admin panel). */
+  setForcedCrashQueue(values: number[]): void {
+    this.forcedCrashQueue = (values ?? []).filter((v) => typeof v === 'number' && Number.isFinite(v) && v >= 1).map((v) => Math.max(1, v));
   }
 
   // ── lifecycle control ────────────────────────────────────
@@ -145,6 +153,7 @@ export class GameEngine {
       // Consume the next queued forced crash (FIFO), else compute provably-fair.
       const forced = this.forcedCrashQueue.shift();
       this.crashPoint = forced ?? computeCrashPoint(seed.seed, this.clientSeed, this.nonce);
+      this.activeForcedCrash = forced ?? null; // what's being applied to THIS round
 
       const last = await Round.findOne().sort({ roundId: -1 }).select('roundId').lean();
       this.roundId = (last?.roundId ?? 0) + 1;

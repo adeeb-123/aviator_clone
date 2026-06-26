@@ -8,7 +8,7 @@ import { getActiveSeed, rotateSeed } from '../services/seedManager';
 import { getGameEngine } from '../services/gameEngine';
 import { env } from '../config/env';
 import { asyncHandler } from '../middleware/error';
-import { notFound, forbidden } from '../utils/errors';
+import { notFound, forbidden, badRequest } from '../utils/errors';
 
 export const dashboard = asyncHandler(async (_req: Request, res: Response) => {
   const engine = getGameEngine();
@@ -120,6 +120,13 @@ export const clearForceCrash = asyncHandler(async (req: Request, res: Response) 
   // Remove a single queued item if an index is given, otherwise clear the whole queue.
   if (typeof idx === 'number') getGameEngine().removeForcedCrashAt(idx);
   else getGameEngine().clearForcedCrash();
+  res.json(getGameEngine().getAdminStatus());
+});
+
+export const reorderForceCrash = asyncHandler(async (req: Request, res: Response) => {
+  const queue = req.body?.queue;
+  if (!Array.isArray(queue)) throw badRequest('queue must be an array of numbers');
+  getGameEngine().setForcedCrashQueue(queue.map(Number));
   res.json(getGameEngine().getAdminStatus());
 });
 

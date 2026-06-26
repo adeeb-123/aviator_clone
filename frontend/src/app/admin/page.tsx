@@ -7,7 +7,7 @@ import Players from '@/components/admin/Players';
 import Rounds from '@/components/admin/Rounds';
 import Controls from '@/components/admin/Controls';
 import Alerts from '@/components/admin/Alerts';
-import { useAuth, useGame, useAlerts } from '@/lib/store';
+import { useAuth, useGame, useAlerts, useGameControl } from '@/lib/store';
 import { api } from '@/lib/api';
 import { getSocket } from '@/lib/socket';
 import type { AdminAlert } from '@/types';
@@ -22,6 +22,7 @@ export default function AdminPage() {
   const phase = useGame((s) => s.phase);
   const multiplier = useGame((s) => s.multiplier);
   const { unread, setAll, prepend, latest, clearLatest } = useAlerts();
+  const forcedCount = useGameControl((s) => s.forcedCount);
   const [tab, setTab] = useState<Tab>('overview');
   const [toast, setToast] = useState<AdminAlert | null>(null);
 
@@ -59,7 +60,7 @@ export default function AdminPage() {
     { id: 'players', label: 'Players', icon: '👥' },
     { id: 'rounds', label: 'Round Audit', icon: '🎲' },
     { id: 'alerts', label: 'Alerts', icon: '🔔', badge: unread },
-    { id: 'controls', label: 'Game Controls', icon: '🎮' },
+    { id: 'controls', label: 'Game Controls', icon: '🎮', badge: forcedCount },
   ];
 
   return (

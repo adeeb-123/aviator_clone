@@ -34,6 +34,7 @@ router.get('/game/status', ctrl.gameStatus);
 router.post('/game/pause', ctrl.pauseGame);
 router.post('/game/force-crash', validate(adminCrashSchema), ctrl.forceCrash);
 router.post('/game/clear-crash', ctrl.clearForceCrash);
+router.post('/game/reorder-crash', ctrl.reorderForceCrash);
 
 router.get('/seed', ctrl.seedInfo);
 router.post('/seed/rotate', ctrl.rotateActiveSeed);
