@@ -44,8 +44,8 @@ export class GameEngine {
   private phaseTimer?: NodeJS.Timeout;
   private running = false;
 
-  /** Admin override: force the next round's crash point. */
-  private forcedCrashPoint?: number;
+  /** Admin override: FIFO queue of forced crash points, applied to successive rounds. */
+  private forcedCrashQueue: number[] = [];
   private paused = false;
 
   // exponential growth rate (per second). Tuned for a lively but fair curve.
@@ -87,14 +87,21 @@ export class GameEngine {
       roundId: this.roundId,
       multiplier: this.getMultiplierNow(),
       paused: this.paused,
-      forcedCrashPoint: this.forcedCrashPoint ?? null,
+      forcedCrashQueue: [...this.forcedCrashQueue],
       running: this.running,
     };
   }
 
-  /** Cancel a queued force-crash (if not yet applied). */
+  /** Clear the entire force-crash queue. */
   clearForcedCrash(): void {
-    this.forcedCrashPoint = undefined;
+    this.forcedCrashQueue = [];
+  }
+
+  /** Remove a single queued force-crash by its position (0-based). */
+  removeForcedCrashAt(index: number): void {
+    if (index >= 0 && index < this.forcedCrashQueue.length) {
+      this.forcedCrashQueue.splice(index, 1);
+    }
   }
 
   // ── lifecycle control ────────────────────────────────────
@@ -116,9 +123,10 @@ export class GameEngine {
     this.paused = paused;
   }
 
+  /** Append a forced crash point to the queue (applied FIFO to upcoming rounds). */
   forceCrashPoint(value: number): void {
-    this.forcedCrashPoint = Math.max(1, value);
-    logger.warn({ value }, 'Admin forced crash point for next round');
+    this.forcedCrashQueue.push(Math.max(1, value));
+    logger.warn({ value, queued: this.forcedCrashQueue.length }, 'Admin queued a forced crash point');
   }
 
   // ── round phases ─────────────────────────────────────────
@@ -134,9 +142,9 @@ export class GameEngine {
       this.nonce = await nextNonce(seed._id);
       this.clientSeed = generateClientSeed();
       this.serverSeedHash = seed.hash;
-      this.crashPoint =
-        this.forcedCrashPoint ?? computeCrashPoint(seed.seed, this.clientSeed, this.nonce);
-      this.forcedCrashPoint = undefined;
+      // Consume the next queued forced crash (FIFO), else compute provably-fair.
+      const forced = this.forcedCrashQueue.shift();
+      this.crashPoint = forced ?? computeCrashPoint(seed.seed, this.clientSeed, this.nonce);
 
       const last = await Round.findOne().sort({ roundId: -1 }).select('roundId').lean();
       this.roundId = (last?.roundId ?? 0) + 1;

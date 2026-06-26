@@ -7,7 +7,7 @@ import { useAutoRefresh } from '@/lib/useAutoRefresh';
 
 interface Status {
   paused: boolean;
-  forcedCrashPoint: number | null;
+  forcedCrashQueue: number[];
   phase: string;
   roundId: number;
   running: boolean;
@@ -41,7 +41,7 @@ export default function Controls() {
   };
 
   const paused = status?.paused ?? false;
-  const forced = status?.forcedCrashPoint ?? null;
+  const queue = status?.forcedCrashQueue ?? [];
   const roundInProgress = phase === 'running' || phase === 'betting';
 
   return (
@@ -102,27 +102,61 @@ export default function Controls() {
             </button>
           </div>
 
-          {/* force crash */}
+          {/* force-crash queue */}
           <div className="border-t border-white/10 pt-3">
-            <label className="text-xs text-white/50">Force next crash point (testing)</label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs text-white/50">Force-crash queue (fires in order, testing)</label>
+              {queue.length > 0 && (
+                <button disabled={busy} className="text-[11px] text-loss hover:underline" onClick={() => act(api.post('/admin/game/clear-crash'))}>
+                  Clear all
+                </button>
+              )}
+            </div>
             <div className="mt-1 flex items-center gap-2">
-              <input className="input max-w-[120px]" value={crash} onChange={(e) => setCrash(e.target.value)} />
-              <button disabled={busy} className="btn-loss" onClick={() => act(api.post('/admin/game/force-crash', { crashPoint: Number(crash) }))}>
-                Force crash
+              <input
+                className="input max-w-[120px]"
+                type="number"
+                step="0.1"
+                min="1"
+                value={crash}
+                onChange={(e) => setCrash(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && !busy && Number(crash) >= 1 && act(api.post('/admin/game/force-crash', { crashPoint: Number(crash) }))}
+              />
+              <button disabled={busy || !(Number(crash) >= 1)} className="btn-loss" onClick={() => act(api.post('/admin/game/force-crash', { crashPoint: Number(crash) }))}>
+                + Add to queue
               </button>
             </div>
 
-            {forced != null ? (
-              <div className="mt-2 flex items-center justify-between rounded-lg border border-loss/50 bg-loss/10 p-2.5 text-sm">
-                <span className="text-loss">
-                  ⚠ <b>Force-crash queued: {forced.toFixed(2)}x</b> — applies to the next round.
-                </span>
-                <button disabled={busy} className="rounded bg-base-600 px-2 py-1 text-xs text-white/80 hover:bg-base-700" onClick={() => act(api.post('/admin/game/clear-crash'))}>
-                  Cancel
-                </button>
-              </div>
+            {queue.length === 0 ? (
+              <p className="mt-2 text-xs text-white/30">No forced crashes queued — rounds are provably fair.</p>
             ) : (
-              <p className="mt-2 text-xs text-white/30">No crash override queued — rounds are provably fair.</p>
+              <div className="mt-2.5">
+                <div className="mb-1.5 flex items-center gap-2 text-[11px] text-white/40">
+                  <span>Upcoming rounds</span>
+                  <span className="text-white/20">— round #{roundId + 1} onward, left → right</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {queue.map((cp, i) => (
+                    <div
+                      key={i}
+                      className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm ${i === 0 ? 'border-loss/60 bg-loss/15' : 'border-white/10 bg-base-700/50'}`}
+                      title={`Round #${roundId + 1 + i}`}
+                    >
+                      <span className={`text-[10px] font-bold ${i === 0 ? 'text-loss' : 'text-white/40'}`}>{i === 0 ? 'NEXT' : `#${i + 1}`}</span>
+                      <span className="font-bold tabular-nums text-white/90">{cp.toFixed(2)}x</span>
+                      <button
+                        disabled={busy}
+                        aria-label="Remove"
+                        className="ml-0.5 rounded text-white/40 hover:text-loss"
+                        onClick={() => act(api.post('/admin/game/clear-crash', { index: i }))}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-1.5 text-[11px] text-gold/70">⚠ Each forces one round&apos;s outcome (overrides provably-fair).</p>
+              </div>
             )}
           </div>
         </div>

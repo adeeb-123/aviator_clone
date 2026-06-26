@@ -115,8 +115,11 @@ export const forceCrash = asyncHandler(async (req: Request, res: Response) => {
   res.json(getGameEngine().getAdminStatus());
 });
 
-export const clearForceCrash = asyncHandler(async (_req: Request, res: Response) => {
-  getGameEngine().clearForcedCrash();
+export const clearForceCrash = asyncHandler(async (req: Request, res: Response) => {
+  const idx = req.body?.index;
+  // Remove a single queued item if an index is given, otherwise clear the whole queue.
+  if (typeof idx === 'number') getGameEngine().removeForcedCrashAt(idx);
+  else getGameEngine().clearForcedCrash();
   res.json(getGameEngine().getAdminStatus());
 });
 
