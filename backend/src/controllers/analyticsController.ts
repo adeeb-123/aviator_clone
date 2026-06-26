@@ -5,6 +5,7 @@ import { Bet } from '../models/Bet';
 import { Round } from '../models/Round';
 import { Transaction } from '../models/Transaction';
 import { getGameEngine } from '../services/gameEngine';
+import { computeCrashPoint } from '../utils/provablyFair';
 import { asyncHandler } from '../middleware/error';
 import { notFound } from '../utils/errors';
 
@@ -33,6 +34,7 @@ export const overview = asyncHandler(async (_req: Request, res: Response) => {
           newToday: { $sum: { $cond: [{ $gte: ['$createdAt', today] }, 1, 0] } },
           newWeek: { $sum: { $cond: [{ $gte: ['$createdAt', week] }, 1, 0] } },
           activeToday: { $sum: { $cond: [{ $gte: ['$lastActiveAt', today] }, 1, 0] } },
+          activeWeek: { $sum: { $cond: [{ $gte: ['$lastActiveAt', week] }, 1, 0] } },
         },
       },
     ]),
@@ -92,6 +94,8 @@ export const overview = asyncHandler(async (_req: Request, res: Response) => {
       newToday: u.newToday ?? 0,
       newWeek: u.newWeek ?? 0,
       activeToday: u.activeToday ?? 0,
+      activeWeek: u.activeWeek ?? 0,
+      returningWeek: Math.max(0, (u.activeWeek ?? 0) - (u.newWeek ?? 0)),
       playerBalances: round2(u.balances ?? 0),
     },
     financial: {
@@ -163,6 +167,48 @@ export const timeseries = asyncHandler(async (req: Request, res: Response) => {
   for (const us of users) { const e = map.get(us._id); if (e) e.newUsers = us.newUsers; }
 
   res.json({ days, series: [...map.values()] });
+});
+
+/**
+ * GET /admin/analytics/rounds?limit=&page=
+ * Per-round audit: economics (house P/L per round) + provably-fair verification
+ * for revealed rounds (flags any manipulated/forced rounds).
+ */
+export const rounds = asyncHandler(async (req: Request, res: Response) => {
+  const limit = Math.min(100, Math.max(10, parseInt(String(req.query.limit ?? '30'), 10)));
+  const page = Math.max(1, parseInt(String(req.query.page ?? '1'), 10));
+
+  const [total, list] = await Promise.all([
+    Round.countDocuments({ status: 'crashed' }),
+    Round.find({ status: 'crashed' })
+      .sort({ roundId: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .select('roundId crashPoint totalBets totalWagered totalPayout serverSeedHash serverSeed clientSeed nonce endTime')
+      .lean(),
+  ]);
+
+  const data = list.map((r) => {
+    let fairnessOk: boolean | null = null;
+    if (r.serverSeed) {
+      const computed = computeCrashPoint(r.serverSeed, r.clientSeed, r.nonce);
+      fairnessOk = Math.abs(computed - r.crashPoint) < 0.001;
+    }
+    return {
+      roundId: r.roundId,
+      crashPoint: r.crashPoint,
+      bets: r.totalBets ?? 0,
+      wagered: round2(r.totalWagered ?? 0),
+      payout: round2(r.totalPayout ?? 0),
+      housePL: round2((r.totalWagered ?? 0) - (r.totalPayout ?? 0)),
+      revealed: !!r.serverSeed,
+      fairnessOk,
+      serverSeedHash: r.serverSeedHash,
+      endTime: r.endTime,
+    };
+  });
+
+  res.json({ rounds: data, total, page, pages: Math.ceil(total / limit) });
 });
 
 /**

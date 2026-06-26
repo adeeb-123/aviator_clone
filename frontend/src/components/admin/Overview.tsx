@@ -1,12 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
 import { api } from '@/lib/api';
 import { inr, inrCompact, num, pct, dateShort } from '@/lib/format';
+import { useAutoRefresh } from '@/lib/useAutoRefresh';
+import { downloadCSV } from '@/lib/csv';
+import RefreshBar from './RefreshBar';
 
 interface OverviewData {
-  users: { total: number; admins: number; banned: number; newToday: number; newWeek: number; activeToday: number; playerBalances: number };
+  users: { total: number; admins: number; banned: number; newToday: number; newWeek: number; activeToday: number; activeWeek: number; returningWeek: number; playerBalances: number };
   financial: { wagered: number; payout: number; ggr: number; margin: number; wageredToday: number; deposits: number; withdrawals: number; netDeposits: number; bonusesPaid: number; adminAdjustments: number };
   game: { rounds: number; avgCrash: number; maxCrash: number; instaBust: number; instaBustRate: number; bets: number; betsToday: number; wins: number; winRate: number; uniqueBettors: number; online: number; phase: string };
   distribution: { range: string; count: number }[];
@@ -31,20 +34,41 @@ export default function Overview() {
   const [series, setSeries] = useState<Record<string, number>[]>([]);
   const [days, setDays] = useState(30);
   const [err, setErr] = useState('');
+  const daysRef = useRef(days);
+  daysRef.current = days;
 
-  useEffect(() => {
-    api.get('/admin/analytics/overview').then((r) => setOv(r.data)).catch(() => setErr('Failed to load analytics'));
-  }, []);
-  useEffect(() => {
-    api.get('/admin/analytics/timeseries', { params: { days } }).then((r) => setSeries(r.data.series)).catch(() => {});
-  }, [days]);
+  const load = async () => {
+    try {
+      const [a, b] = await Promise.all([
+        api.get('/admin/analytics/overview'),
+        api.get('/admin/analytics/timeseries', { params: { days: daysRef.current } }),
+      ]);
+      setOv(a.data);
+      setSeries(b.data.series);
+    } catch {
+      setErr('Failed to load analytics');
+    }
+  };
 
-  if (err) return <p className="text-loss">{err}</p>;
+  const { auto, setAuto, updatedAt, refresh } = useAutoRefresh(load, 20000);
+  // re-fetch when the range changes
+  useEffect(() => { void refresh(); /* eslint-disable-next-line */ }, [days]);
+
+  if (err && !ov) return <p className="text-loss">{err}</p>;
   if (!ov) return <p className="text-white/40">Loading analytics…</p>;
   const { financial: f, game: g, users: u } = ov;
 
+  const exportSeries = () =>
+    downloadCSV(`aviator-financials-${days}d.csv`, series.map((s) => ({
+      date: s.date, wagered: s.wagered, payout: s.payout, profit: s.profit, rounds: s.rounds, bets: s.bets, deposits: s.deposits, withdrawals: s.withdrawals, newUsers: s.newUsers,
+    })));
+
   return (
     <div className="space-y-5">
+      <div className="flex items-center justify-end">
+        <RefreshBar auto={auto} setAuto={setAuto} updatedAt={updatedAt} onRefresh={() => void refresh()} />
+      </div>
+
       {/* headline KPIs */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
         <Kpi label="House Profit (GGR)" value={inrCompact(f.ggr)} sub={`margin ${pct(f.margin)}`} tone={f.ggr >= 0 ? 'win' : 'loss'} />
@@ -53,24 +77,34 @@ export default function Overview() {
         <Kpi label="Deposits" value={inrCompact(f.deposits)} sub={`net ${inrCompact(f.netDeposits)}`} tone="win" />
         <Kpi label="Withdrawals" value={inrCompact(f.withdrawals)} tone="loss" />
         <Kpi label="Player Balances" value={inrCompact(u.playerBalances)} sub="total liability" tone="gold" />
-        <Kpi label="Users" value={num(u.total)} sub={`+${u.newWeek} this week · ${u.banned} banned`} />
-        <Kpi label="Active Today" value={num(u.activeToday)} sub={`${g.online} betting now`} tone="accent" />
         <Kpi label="Rounds" value={num(g.rounds)} sub={`avg ${g.avgCrash}x`} />
         <Kpi label="Biggest Crash" value={`${num(g.maxCrash)}x`} tone="gold" />
         <Kpi label="Instant Busts" value={pct(g.instaBustRate)} sub={`${g.instaBust} @ 1.00x`} tone="loss" />
         <Kpi label="Wagered Today" value={inrCompact(f.wageredToday)} sub={`${g.betsToday} bets`} tone="accent" />
+        <Kpi label="Bonuses Paid" value={inrCompact(f.bonusesPaid)} />
+        <Kpi label="Online Now" value={num(g.online)} sub={`engine ${g.phase}`} tone="accent" />
+      </div>
+
+      {/* engagement */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+        <Kpi label="Total Users" value={num(u.total)} sub={`${u.banned} banned`} />
+        <Kpi label="DAU (active today)" value={num(u.activeToday)} tone="accent" />
+        <Kpi label="WAU (active 7d)" value={num(u.activeWeek)} tone="accent" />
+        <Kpi label="New (7d)" value={num(u.newWeek)} tone="win" />
+        <Kpi label="Returning (7d)" value={num(u.returningWeek)} sub="active but not new" />
       </div>
 
       {/* financial time series */}
       <div className="glass p-4">
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h3 className="font-semibold">Financial trend</h3>
-          <div className="flex gap-1 text-xs">
-            {[7, 30, 90].map((d) => (
-              <button key={d} onClick={() => setDays(d)} className={`rounded px-2 py-1 ${days === d ? 'bg-accent text-white' : 'text-white/50'}`}>
-                {d}d
-              </button>
-            ))}
+          <div className="flex items-center gap-2">
+            <button onClick={exportSeries} className="rounded bg-base-600 px-2.5 py-1 text-xs font-semibold text-white/80 hover:bg-base-700">⬇ Export CSV</button>
+            <div className="flex gap-1 text-xs">
+              {[7, 30, 90].map((d) => (
+                <button key={d} onClick={() => setDays(d)} className={`rounded px-2 py-1 ${days === d ? 'bg-accent text-white' : 'text-white/50'}`}>{d}d</button>
+              ))}
+            </div>
           </div>
         </div>
         <div className="h-72">
@@ -91,13 +125,10 @@ export default function Overview() {
             </AreaChart>
           </ResponsiveContainer>
         </div>
-        <div className="mt-1 flex gap-4 text-xs text-white/50">
-          <span>🟣 Wagered</span><span>🔴 Payout</span><span>🟢 House profit</span>
-        </div>
+        <div className="mt-1 flex gap-4 text-xs text-white/50"><span>🟣 Wagered</span><span>🔴 Payout</span><span>🟢 House profit</span></div>
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        {/* crash distribution */}
         <div className="glass p-4">
           <h3 className="mb-3 font-semibold">Crash distribution ({num(g.rounds)} rounds)</h3>
           <div className="h-60">
@@ -115,7 +146,6 @@ export default function Overview() {
           </div>
         </div>
 
-        {/* transaction breakdown */}
         <div className="glass p-4">
           <h3 className="mb-3 font-semibold">Transaction breakdown</h3>
           <div className="space-y-2">

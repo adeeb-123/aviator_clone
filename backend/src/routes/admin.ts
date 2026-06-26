@@ -14,6 +14,7 @@ router.get('/revenue', ctrl.revenueSeries);
 // ── advanced analytics ──
 router.get('/analytics/overview', analytics.overview);
 router.get('/analytics/timeseries', analytics.timeseries);
+router.get('/analytics/rounds', analytics.rounds);
 router.get('/analytics/players', analytics.players);
 router.get('/analytics/players/:userId', analytics.playerDetail);
 router.get('/users', ctrl.listUsers);

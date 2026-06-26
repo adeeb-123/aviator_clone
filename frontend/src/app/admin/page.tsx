@@ -4,10 +4,11 @@ import { useState } from 'react';
 import Header from '@/components/Header';
 import Overview from '@/components/admin/Overview';
 import Players from '@/components/admin/Players';
+import Rounds from '@/components/admin/Rounds';
 import Controls from '@/components/admin/Controls';
 import { useAuth, useGame } from '@/lib/store';
 
-type Tab = 'overview' | 'players' | 'controls';
+type Tab = 'overview' | 'players' | 'rounds' | 'controls';
 
 export default function AdminPage() {
   const user = useAuth((s) => s.user);
@@ -27,6 +28,7 @@ export default function AdminPage() {
   const tabs: { id: Tab; label: string; icon: string }[] = [
     { id: 'overview', label: 'Overview & Analytics', icon: '📊' },
     { id: 'players', label: 'Players', icon: '👥' },
+    { id: 'rounds', label: 'Round Audit', icon: '🎲' },
     { id: 'controls', label: 'Game Controls', icon: '🎮' },
   ];
 
@@ -61,6 +63,7 @@ export default function AdminPage() {
 
         {tab === 'overview' && <Overview />}
         {tab === 'players' && <Players />}
+        {tab === 'rounds' && <Rounds />}
         {tab === 'controls' && <Controls />}
       </main>
     </div>

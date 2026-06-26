@@ -1,8 +1,11 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { inr, num, pct, dt } from '@/lib/format';
+import { useAutoRefresh } from '@/lib/useAutoRefresh';
+import { downloadCSV } from '@/lib/csv';
+import RefreshBar from './RefreshBar';
 import PlayerDetail from './PlayerDetail';
 
 interface Row {
@@ -29,35 +32,43 @@ export default function Players() {
   const [sort, setSort] = useState('housePL');
   const [dir, setDir] = useState<'asc' | 'desc'>('desc');
   const [selected, setSelected] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const state = useRef({ q, sort, dir });
+  state.current = { q, sort, dir };
 
-  const load = useCallback(() => {
-    setLoading(true);
-    api.get('/admin/analytics/players', { params: { q, sort, dir, limit: 100 } })
-      .then((r) => setRows(r.data.players))
-      .finally(() => setLoading(false));
-  }, [q, sort, dir]);
+  const load = async () => {
+    const { q, sort, dir } = state.current;
+    const r = await api.get('/admin/analytics/players', { params: { q, sort, dir, limit: 100 } });
+    setRows(r.data.players);
+  };
+  const { auto, setAuto, updatedAt, refresh } = useAutoRefresh(load, 20000);
 
+  // debounce on search / sort change
   useEffect(() => {
-    const id = setTimeout(load, 250); // debounce search
+    const id = setTimeout(() => void refresh(), 250);
     return () => clearTimeout(id);
-  }, [load]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, sort, dir]);
 
   const toggleSort = (key: string) => {
     if (sort === key) setDir(dir === 'desc' ? 'asc' : 'desc');
     else { setSort(key); setDir('desc'); }
   };
 
+  const exportCSV = () =>
+    downloadCSV('aviator-players.csv', rows.map((r) => ({
+      username: r.username, email: r.email, balance: r.balance, wagered: r.wagered, won: r.won,
+      playerPL: r.playerPL, housePL: r.housePL, bets: r.bets, wins: r.wins, winRate: r.winRate,
+      bestMultiplier: r.bestMultiplier, deposits: r.deposits, withdrawals: r.withdrawals, banned: r.isBanned, lastActive: r.lastActiveAt,
+    })));
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <input
-          className="input max-w-xs"
-          placeholder="Search username or email…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
-        <span className="text-xs text-white/40">{rows.length} players · sorted by {sort} {dir === 'desc' ? '↓' : '↑'}</span>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <input className="input max-w-xs" placeholder="Search username or email…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <RefreshBar auto={auto} setAuto={setAuto} updatedAt={updatedAt} onRefresh={() => void refresh()}>
+          <button onClick={exportCSV} className="rounded bg-base-600 px-2.5 py-1 font-semibold text-white/80 hover:bg-base-700">⬇ Export CSV</button>
+          <span>{rows.length} players · {sort} {dir === 'desc' ? '↓' : '↑'}</span>
+        </RefreshBar>
       </div>
 
       <div className="glass overflow-x-auto">
@@ -74,14 +85,9 @@ export default function Players() {
             </tr>
           </thead>
           <tbody>
-            {loading && <tr><td colSpan={12} className="px-3 py-6 text-center text-white/30">Loading…</td></tr>}
-            {!loading && rows.length === 0 && <tr><td colSpan={12} className="px-3 py-6 text-center text-white/30">No players.</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={12} className="px-3 py-6 text-center text-white/30">No players.</td></tr>}
             {rows.map((r) => (
-              <tr
-                key={r.userId}
-                onClick={() => setSelected(r.userId)}
-                className="cursor-pointer border-b border-white/5 hover:bg-base-700/40"
-              >
+              <tr key={r.userId} onClick={() => setSelected(r.userId)} className="cursor-pointer border-b border-white/5 hover:bg-base-700/40">
                 <td className="px-3 py-2.5">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-white/90">{r.username}</span>
@@ -107,7 +113,7 @@ export default function Players() {
         💡 <b>House P/L</b> = your profit/loss from that player (wagered − won). Positive = the house is ahead. Click a row for full activity.
       </p>
 
-      {selected && <PlayerDetail userId={selected} onClose={() => setSelected(null)} onChanged={load} />}
+      {selected && <PlayerDetail userId={selected} onClose={() => setSelected(null)} onChanged={refresh} />}
     </div>
   );
 }
