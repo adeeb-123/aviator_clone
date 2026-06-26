@@ -30,8 +30,10 @@ router.patch('/users/:userId', ctrl.setUserFlag);
 router.post('/balance', validate(adminAdjustSchema), ctrl.adjustUserBalance);
 router.get('/audit', ctrl.auditLog);
 
+router.get('/game/status', ctrl.gameStatus);
 router.post('/game/pause', ctrl.pauseGame);
 router.post('/game/force-crash', validate(adminCrashSchema), ctrl.forceCrash);
+router.post('/game/clear-crash', ctrl.clearForceCrash);
 
 router.get('/seed', ctrl.seedInfo);
 router.post('/seed/rotate', ctrl.rotateActiveSeed);

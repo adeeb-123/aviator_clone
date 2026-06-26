@@ -97,14 +97,23 @@ export const auditLog = asyncHandler(async (req: Request, res: Response) => {
 });
 
 // ── game controls ──────────────────────────────────────────
+export const gameStatus = asyncHandler(async (_req: Request, res: Response) => {
+  res.json(getGameEngine().getAdminStatus());
+});
+
 export const pauseGame = asyncHandler(async (req: Request, res: Response) => {
   getGameEngine().setPaused(Boolean(req.body.paused));
-  res.json({ paused: Boolean(req.body.paused) });
+  res.json(getGameEngine().getAdminStatus());
 });
 
 export const forceCrash = asyncHandler(async (req: Request, res: Response) => {
   getGameEngine().forceCrashPoint(req.body.crashPoint);
-  res.json({ ok: true, crashPoint: req.body.crashPoint });
+  res.json(getGameEngine().getAdminStatus());
+});
+
+export const clearForceCrash = asyncHandler(async (_req: Request, res: Response) => {
+  getGameEngine().clearForcedCrash();
+  res.json(getGameEngine().getAdminStatus());
 });
 
 // ── seed management ────────────────────────────────────────

@@ -20,6 +20,7 @@ export default function AdminPage() {
   const user = useAuth((s) => s.user);
   const loading = useAuth((s) => s.loading);
   const phase = useGame((s) => s.phase);
+  const multiplier = useGame((s) => s.multiplier);
   const { unread, setAll, prepend, latest, clearLatest } = useAlerts();
   const [tab, setTab] = useState<Tab>('overview');
   const [toast, setToast] = useState<AdminAlert | null>(null);
@@ -84,8 +85,14 @@ export default function AdminPage() {
             <h1 className="text-3xl font-black">Admin Console</h1>
             <p className="text-sm text-white/40">Real-time analytics & operations</p>
           </div>
-          <div className="glass px-4 py-2 text-sm">
-            Engine: <span className="font-bold capitalize text-accent-glow">{phase}</span>
+          <div className="glass flex items-center gap-2 px-4 py-2 text-sm">
+            <span className={`h-2 w-2 rounded-full ${phase === 'running' ? 'bg-win animate-pulse' : phase === 'crashed' ? 'bg-loss' : 'bg-gold'}`} />
+            <span>Engine:</span>
+            <span className="font-bold capitalize text-accent-glow">{phase}</span>
+            <span className="text-white/30">·</span>
+            <span className={`font-bold tabular-nums ${phase === 'crashed' ? 'text-loss' : phase === 'running' ? 'text-win' : 'text-white/60'}`}>
+              {multiplier.toFixed(2)}x
+            </span>
           </div>
         </div>
 

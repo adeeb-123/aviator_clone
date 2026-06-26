@@ -76,6 +76,27 @@ export class GameEngine {
     };
   }
 
+  /**
+   * Admin-only status. Includes the pause flag and any queued force-crash —
+   * these must NEVER be exposed on the public snapshot (would leak the next
+   * crash point to players).
+   */
+  getAdminStatus() {
+    return {
+      phase: this.phase,
+      roundId: this.roundId,
+      multiplier: this.getMultiplierNow(),
+      paused: this.paused,
+      forcedCrashPoint: this.forcedCrashPoint ?? null,
+      running: this.running,
+    };
+  }
+
+  /** Cancel a queued force-crash (if not yet applied). */
+  clearForcedCrash(): void {
+    this.forcedCrashPoint = undefined;
+  }
+
   // ── lifecycle control ────────────────────────────────────
   start(): void {
     if (this.running) return;
