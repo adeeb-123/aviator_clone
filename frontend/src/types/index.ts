@@ -51,3 +51,16 @@ export interface ChatMessage {
   message: string;
   createdAt: string;
 }
+
+export interface AdminAlert {
+  _id?: string;
+  id?: string;
+  type: 'large-bet' | 'big-win' | 'high-balance' | 'large-withdrawal' | 'large-deposit' | 'big-payout';
+  severity: 'info' | 'warning' | 'critical';
+  userId?: string;
+  username?: string;
+  message: string;
+  meta?: Record<string, unknown>;
+  read: boolean;
+  createdAt: string;
+}

@@ -6,6 +6,7 @@ import { env } from './config/env';
 import { connectDB } from './config/db';
 import { connectRedis } from './config/redis';
 import { initGameEngine } from './services/gameEngine';
+import { initAlerts } from './services/alertService';
 import { setupSocket } from './socket';
 import { User } from './models/User';
 import { logger } from './utils/logger';
@@ -67,6 +68,7 @@ export async function bootstrap(): Promise<void> {
   });
 
   const engine = initGameEngine(io);
+  initAlerts(io);
   await setupSocket(io);
   engine.start();
 

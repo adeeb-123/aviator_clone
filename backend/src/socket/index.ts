@@ -56,6 +56,7 @@ export async function setupSocket(io: Server): Promise<void> {
 
     if (socket.authUser) {
       socket.join(`user:${socket.authUser.id}`);
+      if (socket.authUser.role === 'admin') socket.join('admins'); // receives admin:alert events
     }
 
     socket.on(EVENTS.PLACE_BET, async (data, ack) => {

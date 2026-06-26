@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import * as ctrl from '../controllers/adminController';
 import * as analytics from '../controllers/analyticsController';
+import * as alerts from '../controllers/alertController';
 import { authenticate, requireAdmin } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { adminAdjustSchema, adminCrashSchema } from '../validators/schemas';
@@ -17,6 +18,13 @@ router.get('/analytics/timeseries', analytics.timeseries);
 router.get('/analytics/rounds', analytics.rounds);
 router.get('/analytics/players', analytics.players);
 router.get('/analytics/players/:userId', analytics.playerDetail);
+
+// ── alerts ──
+router.get('/alerts', alerts.list);
+router.post('/alerts/read-all', alerts.markAllRead);
+router.post('/alerts/:id/read', alerts.markRead);
+router.get('/alerts/config', alerts.getConfig);
+router.patch('/alerts/config', alerts.setConfig);
 router.get('/users', ctrl.listUsers);
 router.patch('/users/:userId', ctrl.setUserFlag);
 router.post('/balance', validate(adminAdjustSchema), ctrl.adjustUserBalance);

@@ -1,7 +1,9 @@
 import { create } from 'zustand';
 import { api, setAccessToken, getAccessToken } from './api';
 import { reauthSocket } from './socket';
-import type { User, GamePhase, PublicBet, RoundHistoryItem, ChatMessage } from '@/types';
+import type { User, GamePhase, PublicBet, RoundHistoryItem, ChatMessage, AdminAlert } from '@/types';
+
+const alertKey = (a: AdminAlert) => a._id ?? a.id ?? '';
 
 interface AuthState {
   user: User | null;
@@ -86,4 +88,30 @@ export const useGame = create<GameState>((set) => ({
   chat: [],
   set: (partial) => set(partial),
   addChat: (m) => set((s) => ({ chat: [...s.chat.slice(-80), m] })),
+}));
+
+interface AlertState {
+  alerts: AdminAlert[];
+  unread: number;
+  latest: AdminAlert | null;
+  setAll: (alerts: AdminAlert[], unread: number) => void;
+  prepend: (a: AdminAlert) => void;
+  markRead: (id: string) => void;
+  markAll: () => void;
+  clearLatest: () => void;
+}
+
+export const useAlerts = create<AlertState>((set) => ({
+  alerts: [],
+  unread: 0,
+  latest: null,
+  setAll: (alerts, unread) => set({ alerts, unread }),
+  prepend: (a) => set((s) => ({ alerts: [a, ...s.alerts].slice(0, 200), unread: s.unread + (a.read ? 0 : 1), latest: a })),
+  markRead: (id) =>
+    set((s) => ({
+      alerts: s.alerts.map((x) => (alertKey(x) === id ? { ...x, read: true } : x)),
+      unread: Math.max(0, s.unread - 1),
+    })),
+  markAll: () => set((s) => ({ alerts: s.alerts.map((x) => ({ ...x, read: true })), unread: 0 })),
+  clearLatest: () => set({ latest: null }),
 }));

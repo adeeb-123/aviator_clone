@@ -1,6 +1,7 @@
 import { Types, ClientSession } from 'mongoose';
 import { User } from '../models/User';
 import { Transaction, TxType } from '../models/Transaction';
+import { alertBalanceEvent } from './alertService';
 import { AppError } from '../utils/errors';
 
 /**
@@ -47,6 +48,16 @@ export async function adjustBalance(params: {
     ],
     { session: session ?? undefined },
   );
+
+  // Operator alerts (fire-and-forget): high-balance crossing, large withdrawal/deposit.
+  alertBalanceEvent({
+    userId: String(userId),
+    username: updated.username,
+    type,
+    amount,
+    prevBalance: updated.balance - amount,
+    newBalance: updated.balance,
+  });
 
   return updated.balance;
 }

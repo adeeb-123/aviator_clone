@@ -6,6 +6,7 @@ import { adjustBalance } from './ledger';
 import { getActiveSeed, nextNonce } from './seedManager';
 import { computeCrashPoint, generateClientSeed } from '../utils/provablyFair';
 import { getLeaderboard } from './leaderboard';
+import { alertLargeBet, alertBigWin } from './alertService';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 import { EVENTS, PublicBet } from '../socket/events';
@@ -317,6 +318,8 @@ export class GameEngine {
     this.io.emit(EVENTS.BET_PLACED, publicBet);
     this.io.emit(EVENTS.PLAYERS_UPDATE, this.publicBets());
 
+    alertLargeBet({ userId: params.userId, username: params.username, amount, roundId: this.roundId });
+
     return { balance, bet: publicBet };
   }
 
@@ -357,6 +360,9 @@ export class GameEngine {
     });
     this.io.to(`user:${bet.userId}`).emit(EVENTS.BALANCE_UPDATE, { balance });
     this.io.emit(EVENTS.PLAYERS_UPDATE, this.publicBets());
+
+    alertBigWin({ userId: bet.userId, username: bet.username, amount: bet.amount, multiplier, payout: bet.payout, roundId: this.roundId });
+
     return balance;
   }
 
