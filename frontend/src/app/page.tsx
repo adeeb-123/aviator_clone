@@ -19,7 +19,7 @@ export default function GamePage() {
     <div className="min-h-screen">
       <Header />
 
-      <main className="mx-auto grid max-w-7xl grid-cols-1 gap-4 px-4 py-4 lg:grid-cols-[1fr_320px]">
+      <main className="mx-auto grid max-w-7xl grid-cols-1 gap-3 px-3 py-4 sm:gap-4 sm:px-4 lg:grid-cols-[1fr_320px]">
         {/* left column: game — min-w-0 lets the 1fr column shrink so the long
             round-history row scrolls internally instead of overflowing the page */}
         <section className="min-w-0 space-y-4">
@@ -32,7 +32,7 @@ export default function GamePage() {
           </div>
 
           <div
-            className={`relative h-[360px] overflow-hidden rounded-2xl border border-white/5 md:h-[460px] ${
+            className={`relative h-[280px] overflow-hidden rounded-2xl border border-white/5 sm:h-[360px] md:h-[460px] ${
               phase === 'crashed' ? 'ring-2 ring-loss/40' : ''
             }`}
             style={{ background: 'radial-gradient(circle at 30% 100%, rgba(124,58,237,0.15), transparent 60%)' }}
@@ -55,7 +55,7 @@ export default function GamePage() {
         </section>
 
         {/* right column: chat */}
-        <aside className="h-[calc(100vh-7rem)] min-w-0 lg:sticky lg:top-20">
+        <aside className="h-[420px] min-w-0 lg:sticky lg:top-20 lg:h-[calc(100vh-7rem)]">
           <Chat />
         </aside>
       </main>

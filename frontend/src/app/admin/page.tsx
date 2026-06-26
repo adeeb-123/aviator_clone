@@ -80,10 +80,10 @@ export default function AdminPage() {
         </div>
       )}
 
-      <main className="mx-auto max-w-[1400px] space-y-5 px-4 py-6">
-        <div className="flex items-center justify-between">
+      <main className="mx-auto max-w-[1400px] space-y-5 px-3 py-6 sm:px-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-3xl font-black">Admin Console</h1>
+            <h1 className="text-2xl font-black sm:text-3xl">Admin Console</h1>
             <p className="text-sm text-white/40">Real-time analytics & operations</p>
           </div>
           <div className="glass flex items-center gap-2 px-4 py-2 text-sm">

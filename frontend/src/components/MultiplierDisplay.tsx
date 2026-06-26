@@ -32,8 +32,8 @@ export default function MultiplierDisplay() {
             exit={{ opacity: 0 }}
             className="text-center"
           >
-            <div className="text-sm uppercase tracking-widest text-white/50">Next round in</div>
-            <div className="text-6xl font-bold text-accent-glow">{countdown.toFixed(1)}s</div>
+            <div className="text-xs uppercase tracking-widest text-white/50 sm:text-sm">Next round in</div>
+            <div className="text-5xl font-bold text-accent-glow sm:text-6xl">{countdown.toFixed(1)}s</div>
             <div className="mt-2 text-white/40">Place your bets</div>
           </motion.div>
         )}
@@ -47,7 +47,7 @@ export default function MultiplierDisplay() {
             style={{ color }}
           >
             <motion.div
-              className="text-7xl font-black tabular-nums md:text-8xl"
+              className="text-6xl font-black tabular-nums sm:text-7xl md:text-8xl"
               style={{ textShadow: `0 0 40px ${color}` }}
               animate={{ scale: [1, 1.03, 1] }}
               transition={{ repeat: Infinity, duration: 0.6 }}
@@ -64,8 +64,8 @@ export default function MultiplierDisplay() {
             animate={{ scale: 1, opacity: 1 }}
             className="text-center"
           >
-            <div className="text-2xl font-semibold uppercase tracking-widest text-loss">Flew away!</div>
-            <div className="text-7xl font-black text-loss" style={{ textShadow: '0 0 40px #ef4444' }}>
+            <div className="text-xl font-semibold uppercase tracking-widest text-loss sm:text-2xl">Flew away!</div>
+            <div className="text-6xl font-black text-loss sm:text-7xl" style={{ textShadow: '0 0 40px #ef4444' }}>
               {(crashPoint ?? multiplier).toFixed(2)}x
             </div>
           </motion.div>

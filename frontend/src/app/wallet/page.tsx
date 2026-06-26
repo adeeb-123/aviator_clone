@@ -77,18 +77,18 @@ export default function WalletPage() {
           <div className="text-sm text-white/50">Current balance</div>
           <div className="text-4xl font-black text-win">₹{user?.balance.toFixed(2) ?? '0.00'}</div>
 
-          <div className="mt-4 flex items-center gap-2">
+          <div className="mt-4 flex flex-wrap items-center gap-2">
             <input
               type="number"
               min={1}
-              className="input max-w-[160px]"
+              className="input w-full max-w-[160px] sm:w-auto"
               value={amount}
               onChange={(e) => setAmount(Number(e.target.value))}
             />
-            <button className="btn-win" onClick={deposit}>
+            <button className="btn-win flex-1 sm:flex-none" onClick={deposit}>
               Deposit (Stripe)
             </button>
-            <button className="btn bg-base-600 text-white" onClick={withdraw}>
+            <button className="btn flex-1 bg-base-600 text-white sm:flex-none" onClick={withdraw}>
               Withdraw
             </button>
           </div>
