@@ -7,6 +7,7 @@ import { getActiveSeed, nextNonce } from './seedManager';
 import { computeCrashPoint, generateClientSeed } from '../utils/provablyFair';
 import { getLeaderboard } from './leaderboard';
 import { alertLargeBet, alertBigWin } from './alertService';
+import { cfg } from './runtimeConfig';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 import { EVENTS, PublicBet } from '../socket/events';
@@ -57,6 +58,11 @@ export class GameEngine {
     this.io = io;
   }
 
+  /** Broadcast an arbitrary event to all sockets (used by admin moderation/broadcast). */
+  emit(event: string, payload: unknown): void {
+    this.io.emit(event, payload);
+  }
+
   // ── public state accessors ───────────────────────────────
   getPhase(): Phase {
     return this.phase;
@@ -84,14 +90,22 @@ export class GameEngine {
    * crash point to players).
    */
   getAdminStatus() {
+    const all = [...this.liveBets.values()];
+    const pending = all.filter((b) => b.status === 'pending');
+    const m = this.getMultiplierNow();
+    const round2 = (n: number) => Math.round(n * 100) / 100;
     return {
       phase: this.phase,
       roundId: this.roundId,
-      multiplier: this.getMultiplierNow(),
+      multiplier: m,
       paused: this.paused,
       activeForcedCrash: this.activeForcedCrash,
       forcedCrashQueue: [...this.forcedCrashQueue],
       running: this.running,
+      // live risk for THIS round
+      roundBets: all.length,
+      roundWagered: round2(all.reduce((s, b) => s + b.amount, 0)),
+      liveExposure: round2(pending.reduce((s, b) => s + b.amount * m, 0)), // payout if all open bets cashed now
     };
   }
 
@@ -171,7 +185,8 @@ export class GameEngine {
       this.liveBets.clear();
       this.phase = 'betting';
 
-      const bettingEndsAt = Date.now() + env.game.bettingWindowMs;
+      const bettingWindowMs = cfg().bettingWindowMs;
+      const bettingEndsAt = Date.now() + bettingWindowMs;
       this.io.emit(EVENTS.ROUND_BETTING, {
         roundId: this.roundId,
         serverSeedHash: this.serverSeedHash,
@@ -181,7 +196,7 @@ export class GameEngine {
       });
       logger.debug({ roundId: this.roundId, crashPoint: this.crashPoint }, 'Betting open');
 
-      this.phaseTimer = setTimeout(() => void this.beginRunning(), env.game.bettingWindowMs);
+      this.phaseTimer = setTimeout(() => void this.beginRunning(), bettingWindowMs);
     } catch (err) {
       logger.error({ err }, 'beginBetting failed; retrying');
       this.phaseTimer = setTimeout(() => void this.beginBetting(), 3000);
@@ -268,7 +283,7 @@ export class GameEngine {
 
     logger.debug({ roundId: this.roundId, crashPoint: this.crashPoint }, 'Round crashed');
 
-    this.phaseTimer = setTimeout(() => void this.beginBetting(), env.game.roundPauseMs);
+    this.phaseTimer = setTimeout(() => void this.beginBetting(), cfg().roundPauseMs);
   }
 
   // ── player actions (called from socket handlers) ─────────
@@ -288,8 +303,8 @@ export class GameEngine {
     if (typeof amount !== 'number' || !Number.isFinite(amount)) {
       throw new Error('Invalid bet amount');
     }
-    if (amount < env.game.minBet || amount > env.game.maxBet) {
-      throw new Error(`Bet must be between ${env.game.minBet} and ${env.game.maxBet}`);
+    if (amount < cfg().minBet || amount > cfg().maxBet) {
+      throw new Error(`Bet must be between ${cfg().minBet} and ${cfg().maxBet}`);
     }
     if (autoCashout !== undefined) {
       if (typeof autoCashout !== 'number' || !Number.isFinite(autoCashout) || autoCashout < 1.01) {

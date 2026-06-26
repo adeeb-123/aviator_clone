@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { getSocket, EVENTS } from '@/lib/socket';
 import { useAuth, useGame } from '@/lib/store';
+import { api } from '@/lib/api';
 
 const EMOJIS = ['🚀', '✈️', '🔥', '💰', '😎', '😱', '🎉', '💎', '🤑', '😭'];
 
@@ -41,9 +42,18 @@ export default function Chat() {
       <div ref={scrollRef} className="flex-1 space-y-2 overflow-y-auto pr-1">
         {messages.length === 0 && <p className="text-sm text-white/30">Say hi to the table 👋</p>}
         {messages.map((m) => (
-          <div key={m.id} className="text-sm">
-            <span className="font-semibold text-accent-glow">{m.username}</span>{' '}
-            <span className="text-white/80">{m.message}</span>
+          <div key={m.id} className="group flex items-start gap-1 text-sm">
+            <div className="min-w-0 flex-1">
+              <span className="font-semibold text-accent-glow">{m.username}</span>{' '}
+              <span className="break-words text-white/80">{m.message}</span>
+            </div>
+            {user?.role === 'admin' && (
+              <button
+                onClick={() => api.delete(`/admin/chat/${m.id}`).catch(() => {})}
+                title="Delete message"
+                className="shrink-0 px-1 text-xs text-white/20 opacity-0 transition hover:text-loss group-hover:opacity-100"
+              >🗑️</button>
+            )}
           </div>
         ))}
       </div>

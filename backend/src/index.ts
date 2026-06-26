@@ -6,6 +6,7 @@ import { env } from './config/env';
 import { connectDB } from './config/db';
 import { connectRedis } from './config/redis';
 import { initGameEngine } from './services/gameEngine';
+import { loadConfig } from './services/runtimeConfig';
 import { initAlerts } from './services/alertService';
 import { setupSocket } from './socket';
 import { User } from './models/User';
@@ -58,6 +59,7 @@ export async function bootstrap(): Promise<void> {
   await connectDB();
   await connectRedis();
   await ensureAdmin();
+  await loadConfig();
 
   const app = createApp();
   const server = http.createServer(app);

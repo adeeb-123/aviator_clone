@@ -5,6 +5,7 @@ import { verifyAccessToken } from '../utils/jwt';
 import { User } from '../models/User';
 import { Chat } from '../models/Chat';
 import { getGameEngine } from '../services/gameEngine';
+import { cfg, filterProfanity } from '../services/runtimeConfig';
 import { EVENTS } from './events';
 import { logger } from '../utils/logger';
 
@@ -81,6 +82,7 @@ export async function setupSocket(io: Server): Promise<void> {
     socket.on(EVENTS.PLACE_BET, async (data, ack) => {
       try {
         if (!socket.authUser) throw new Error('Login required');
+        if (socket.authUser.role === 'admin' && cfg().blockAdminBetting) throw new Error('Admins cannot place bets');
         if (rateLimited(socket, EVENTS.PLACE_BET)) throw new Error('Too many requests — slow down');
         const result = await engine.placeBet({
           userId: socket.authUser.id,
@@ -110,12 +112,14 @@ export async function setupSocket(io: Server): Promise<void> {
       try {
         if (!socket.authUser) throw new Error('Login required');
         if (rateLimited(socket, EVENTS.SEND_CHAT)) throw new Error('You are sending messages too fast');
-        const message = String(data.message ?? '').trim();
-        if (!message || !EMOJI_OK.test(message)) throw new Error('Invalid message');
+        const raw = String(data.message ?? '').trim();
+        if (!raw || !EMOJI_OK.test(raw)) throw new Error('Invalid message');
 
-        const user = await User.findById(socket.authUser.id).select('avatar isBanned isSuspended').lean();
+        const user = await User.findById(socket.authUser.id).select('avatar isBanned isSuspended chatMutedUntil').lean();
         if (user?.isBanned || user?.isSuspended) throw new Error('You are not allowed to chat');
+        if (user?.chatMutedUntil && new Date(user.chatMutedUntil) > new Date()) throw new Error('You are muted by a moderator');
 
+        const message = filterProfanity(raw);
         const chat = await Chat.create({
           userId: socket.authUser.id,
           username: socket.authUser.username,

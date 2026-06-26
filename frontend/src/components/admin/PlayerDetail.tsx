@@ -74,7 +74,10 @@ export default function PlayerDetail({ userId, onClose, onChanged }: Props) {
               <button disabled={busy} className={`btn text-sm ${u.isBanned ? 'btn-win' : 'btn-loss'}`} onClick={() => act(() => api.patch(`/admin/users/${userId}`, { isBanned: !u.isBanned }))}>
                 {u.isBanned ? 'Unban' : 'Ban'}
               </button>
+              <button disabled={busy} className="btn bg-base-600 text-sm text-white" onClick={() => act(() => api.post(`/admin/users/${userId}/mute`, { minutes: 60 }))}>🔇 Mute 1h</button>
+              <button disabled={busy} className="btn bg-base-600 text-sm text-white" onClick={() => act(() => api.post(`/admin/users/${userId}/mute`, { minutes: 0 }))}>🔊 Unmute</button>
               {u.isBanned && <span className="text-xs text-loss">● banned</span>}
+              {u.chatMutedUntil && new Date(u.chatMutedUntil) > new Date() && <span className="text-xs text-gold">● muted</span>}
             </div>
 
             {/* recent bets + transactions */}

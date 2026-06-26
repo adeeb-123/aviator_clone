@@ -14,6 +14,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const setBalance = useAuth((s) => s.setBalance);
   const gset = useGame((s) => s.set);
   const addChat = useGame((s) => s.addChat);
+  const removeChat = useGame((s) => s.removeChat);
 
   useEffect(() => {
     void hydrate();
@@ -53,6 +54,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     socket.on(EVENTS.PLAYERS_UPDATE, (players) => gset({ players }));
     socket.on(EVENTS.BALANCE_UPDATE, (p) => setBalance(p.balance));
     socket.on(EVENTS.CHAT_MESSAGE, (m) => addChat(m));
+    socket.on('chat:delete', (p: { id: string }) => removeChat(p.id));
 
     return () => {
       socket.off(EVENTS.STATE_INIT);
@@ -64,6 +66,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       socket.off(EVENTS.PLAYERS_UPDATE);
       socket.off(EVENTS.BALANCE_UPDATE);
       socket.off(EVENTS.CHAT_MESSAGE);
+      socket.off('chat:delete');
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

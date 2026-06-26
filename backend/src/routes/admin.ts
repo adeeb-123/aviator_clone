@@ -27,8 +27,16 @@ router.get('/alerts/config', alerts.getConfig);
 router.patch('/alerts/config', alerts.setConfig);
 router.get('/users', ctrl.listUsers);
 router.patch('/users/:userId', ctrl.setUserFlag);
+router.post('/users/:userId/mute', ctrl.muteUser);
 router.post('/balance', validate(adminAdjustSchema), ctrl.adjustUserBalance);
 router.get('/audit', ctrl.auditLog);
+
+// ── runtime config, admin-action log, broadcast & moderation ──
+router.get('/config', ctrl.getConfig);
+router.patch('/config', ctrl.setConfig);
+router.get('/actions', ctrl.adminActions);
+router.post('/broadcast', ctrl.broadcast);
+router.delete('/chat/:id', ctrl.deleteChatMessage);
 
 router.get('/game/status', ctrl.gameStatus);
 router.post('/game/pause', ctrl.pauseGame);
