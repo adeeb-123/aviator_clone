@@ -33,6 +33,7 @@ export interface IUser extends Document {
   questClaimed: string[];
   lastCashbackAt?: Date;
   chatMutedUntil?: Date;
+  lastSpinAt?: Date;
   createdAt: Date;
   updatedAt: Date;
   setPassword(plain: string): Promise<void>;
@@ -74,6 +75,7 @@ const userSchema = new Schema<IUser>(
     questClaimed: { type: [String], default: [] },
     lastCashbackAt: { type: Date },
     chatMutedUntil: { type: Date },
+    lastSpinAt: { type: Date },
   },
   { timestamps: true },
 );

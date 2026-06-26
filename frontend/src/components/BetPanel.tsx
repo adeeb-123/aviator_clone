@@ -27,6 +27,7 @@ export default function BetPanel({ slot }: Props) {
   const [placed, setPlaced] = useState(false);
   const [cashedAt, setCashedAt] = useState<number | null>(null);
   const [msg, setMsg] = useState('');
+  const [lastBet, setLastBet] = useState<number | null>(null);
 
   // ── auto-bet config + running state ──
   const [autoRunning, setAutoRunning] = useState(false);
@@ -114,10 +115,10 @@ export default function BetPanel({ slot }: Props) {
   const stopAuto = () => { r.current.running = false; setAutoRunning(false); };
 
   // ── manual actions ──
-  const place = () => {
+  const place = (amt = amount) => {
     if (!user) { setMsg('Please log in to bet'); return; }
-    getSocket().emit(EVENTS.PLACE_BET, { slot, amount, autoCashout: autoEnabled && autoCashout ? Number(autoCashout) : undefined }, (res: { ok: boolean; balance?: number; error?: string }) => {
-      if (res.ok) { setPlaced(true); if (res.balance !== undefined) setBalance(res.balance); setMsg(''); sound.bet(); }
+    getSocket().emit(EVENTS.PLACE_BET, { slot, amount: amt, autoCashout: autoEnabled && autoCashout ? Number(autoCashout) : undefined }, (res: { ok: boolean; balance?: number; error?: string }) => {
+      if (res.ok) { setPlaced(true); setLastBet(amt); if (res.balance !== undefined) setBalance(res.balance); setMsg(''); sound.bet(); }
       else setMsg(res.error ?? 'Bet failed');
     });
   };
@@ -215,7 +216,12 @@ export default function BetPanel({ slot }: Props) {
         ) : placed ? (
           <div className="btn w-full bg-base-600 text-center text-white/70">Waiting for round…</div>
         ) : (
-          <button className="btn-primary w-full text-lg" onClick={place} disabled={!canBet}>Bet ₹{amount.toFixed(2)}</button>
+          <div className="space-y-2">
+            <button className="btn-primary w-full text-lg" onClick={() => place()} disabled={!canBet}>Bet ₹{amount.toFixed(2)}</button>
+            {lastBet !== null && lastBet !== amount && (
+              <button className="btn w-full bg-base-700 text-sm text-white/80" onClick={() => place(lastBet)} disabled={!canBet}>🔁 Rebet ₹{lastBet.toFixed(2)}</button>
+            )}
+          </div>
         )}
       </div>
 

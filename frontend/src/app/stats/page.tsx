@@ -6,7 +6,7 @@ import Header from '@/components/Header';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/store';
 import { inrCompact } from '@/lib/format';
-import type { PlayerStats, Badge } from '@/types';
+import type { PlayerStats, Badge, LevelInfo } from '@/types';
 
 function Stat({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
@@ -21,10 +21,11 @@ export default function StatsPage() {
   const user = useAuth((s) => s.user);
   const [stats, setStats] = useState<PlayerStats | null>(null);
   const [badges, setBadges] = useState<Badge[]>([]);
+  const [level, setLevel] = useState<LevelInfo | null>(null);
   const [err, setErr] = useState('');
 
   useEffect(() => {
-    api.get('/users/stats').then(({ data }) => { setStats(data.stats); setBadges(data.badges); }).catch(() => setErr('Please log in to see your stats.'));
+    api.get('/users/stats').then(({ data }) => { setStats(data.stats); setBadges(data.badges); setLevel(data.level); }).catch(() => setErr('Please log in to see your stats.'));
   }, []);
 
   const inr = inrCompact; // compact (₹1.2L / ₹5.3k) so big values never overflow the cards
@@ -45,6 +46,23 @@ export default function StatsPage() {
 
         {err && <p className="text-loss">{err}</p>}
         {!stats && !err && <p className="text-white/40">Loading…</p>}
+
+        {level && (
+          <div className="glass p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-accent to-accent-glow text-lg font-black">{level.level}</div>
+                <div>
+                  <div className="font-black">Level {level.level} · <span className="text-accent-glow">{level.title}</span></div>
+                  <div className="text-xs text-white/40">{level.xp} XP {level.toNext > 0 ? `· ${level.toNext} to level ${level.level + 1}` : '· max level!'}</div>
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-base-700">
+              <div className="h-full rounded-full bg-gradient-to-r from-accent to-accent-glow transition-all" style={{ width: `${level.progressPct}%` }} />
+            </div>
+          </div>
+        )}
 
         {stats && (
           <>

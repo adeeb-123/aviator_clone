@@ -7,6 +7,8 @@ import { adjustBalance } from '../services/ledger';
 import { env } from '../config/env';
 import { VIP_TIERS, resolveVip } from '../config/vip';
 import { QUESTS, QuestMetric } from '../config/quests';
+import { SPIN_SEGMENTS, pickSpinIndex, xpFor, levelFor, levelTitle } from '../config/rewards';
+import { PromoCode } from '../models/PromoCode';
 import { asyncHandler } from '../middleware/error';
 import { badRequest, notFound } from '../utils/errors';
 
@@ -61,6 +63,8 @@ export const getStats = asyncHandler(async (req: Request, res: Response) => {
 
   const winRate = a.bets ? round2((a.wins / a.bets) * 100) : 0;
   const netPL = round2(a.won - a.wagered);
+  const lvl = levelFor(xpFor(a.bets, a.wins));
+  const level = { ...lvl, title: levelTitle(lvl.level) };
 
   const badges: Badge[] = [
     { id: 'first-win', icon: '🎯', label: 'First Win', earned: a.wins >= 1, hint: 'Win a round' },
@@ -88,6 +92,7 @@ export const getStats = asyncHandler(async (req: Request, res: Response) => {
       winStreak,
     },
     badges,
+    level,
   });
 });
 
@@ -199,6 +204,48 @@ export const claimQuest = asyncHandler(async (req: Request, res: Response) => {
   await user.save();
   const balance = await adjustBalance({ userId: user._id, amount: def.reward, type: 'bonus', description: `Quest: ${def.label}` });
   res.json({ claimed: true, reward: def.reward, balance });
+});
+
+/** GET /users/spin — wheel segments + whether the daily free spin is available. */
+export const getSpin = asyncHandler(async (req: Request, res: Response) => {
+  const user = await User.findById(req.user!.sub).select('lastSpinAt').lean();
+  const today = startOfDay(new Date());
+  const canSpin = !user?.lastSpinAt || startOfDay(user.lastSpinAt).getTime() !== today.getTime();
+  res.json({ canSpin, segments: SPIN_SEGMENTS, lastSpinAt: user?.lastSpinAt ?? null });
+});
+
+/** POST /users/spin — take the once-a-day spin; returns the winning segment index. */
+export const doSpin = asyncHandler(async (req: Request, res: Response) => {
+  const user = await User.findById(req.user!.sub);
+  if (!user) throw notFound('User not found');
+  const today = startOfDay(new Date());
+  if (user.lastSpinAt && startOfDay(user.lastSpinAt).getTime() === today.getTime()) {
+    throw badRequest('You already spun today — come back tomorrow!');
+  }
+  const index = pickSpinIndex();
+  const seg = SPIN_SEGMENTS[index];
+  user.lastSpinAt = new Date();
+  await user.save();
+  let balance = user.balance;
+  if (seg.amount > 0) balance = await adjustBalance({ userId: user._id, amount: seg.amount, type: 'bonus', description: `Daily spin: ${seg.label}` });
+  res.json({ index, segment: seg, prize: seg.amount, balance });
+});
+
+/** POST /users/redeem — redeem a promo/bonus code for credits. */
+export const redeemPromo = asyncHandler(async (req: Request, res: Response) => {
+  const code = String(req.body?.code ?? '').trim().toUpperCase();
+  if (!code) throw badRequest('Enter a code');
+  const promo = await PromoCode.findOne({ code });
+  if (!promo || !promo.active) throw badRequest('Invalid or inactive code');
+  if (promo.expiresAt && promo.expiresAt < new Date()) throw badRequest('This code has expired');
+  if (promo.maxUses > 0 && promo.uses >= promo.maxUses) throw badRequest('This code has reached its redemption limit');
+  if (promo.redeemedBy.some((id) => String(id) === req.user!.sub)) throw badRequest('You already redeemed this code');
+
+  promo.uses += 1;
+  promo.redeemedBy.push(new Types.ObjectId(req.user!.sub));
+  await promo.save();
+  const balance = await adjustBalance({ userId: req.user!.sub, amount: promo.amount, type: 'bonus', description: `Promo code ${code}` });
+  res.json({ redeemed: true, amount: promo.amount, balance });
 });
 
 export const me = asyncHandler(async (req: Request, res: Response) => {

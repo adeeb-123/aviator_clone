@@ -6,6 +6,7 @@ import { Round } from '../models/Round';
 import { ServerSeed } from '../models/ServerSeed';
 import { Chat } from '../models/Chat';
 import { AdminAudit } from '../models/AdminAudit';
+import { PromoCode } from '../models/PromoCode';
 import { adjustBalance } from '../services/ledger';
 import { getActiveSeed, rotateSeed } from '../services/seedManager';
 import { getGameEngine } from '../services/gameEngine';
@@ -188,6 +189,37 @@ export const deleteChatMessage = asyncHandler(async (req: Request, res: Response
   getGameEngine().emit('chat:delete', { id });
   logAdmin(req, 'chat-delete', id);
   res.json({ ok: true });
+});
+
+// ── promo / bonus codes ────────────────────────────────────
+export const listPromos = asyncHandler(async (_req: Request, res: Response) => {
+  const promos = await PromoCode.find().sort({ createdAt: -1 }).limit(100).lean();
+  res.json({ promos });
+});
+
+export const createPromo = asyncHandler(async (req: Request, res: Response) => {
+  const code = String(req.body?.code ?? '').trim().toUpperCase();
+  const amount = Number(req.body?.amount);
+  if (!code || !/^[A-Z0-9]{3,20}$/.test(code)) throw badRequest('Code must be 3–20 letters/numbers');
+  if (!Number.isFinite(amount) || amount < 1) throw badRequest('Amount must be at least 1');
+  if (await PromoCode.findOne({ code })) throw badRequest('That code already exists');
+  const promo = await PromoCode.create({
+    code, amount,
+    maxUses: Math.max(0, Number(req.body?.maxUses ?? 0)),
+    expiresAt: req.body?.expiresAt ? new Date(req.body.expiresAt) : undefined,
+    createdBy: req.user!.username,
+  });
+  logAdmin(req, 'promo-create', `${code} (₹${amount})`, { maxUses: promo.maxUses });
+  res.json({ promo });
+});
+
+export const updatePromo = asyncHandler(async (req: Request, res: Response) => {
+  const update: Record<string, unknown> = {};
+  if (typeof req.body?.active === 'boolean') update.active = req.body.active;
+  const promo = await PromoCode.findByIdAndUpdate(req.params.id, { $set: update }, { new: true });
+  if (!promo) throw notFound('Promo not found');
+  logAdmin(req, 'promo-update', promo.code, update);
+  res.json({ promo });
 });
 
 export const muteUser = asyncHandler(async (req: Request, res: Response) => {

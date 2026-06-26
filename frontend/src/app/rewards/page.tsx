@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Header from '@/components/Header';
 import DailyReward from '@/components/DailyReward';
+import SpinWheel from '@/components/SpinWheel';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/store';
 import { sound } from '@/lib/sound';
@@ -17,6 +18,7 @@ export default function RewardsPage() {
   const [quests, setQuests] = useState<Quest[]>([]);
   const [msg, setMsg] = useState('');
   const [copied, setCopied] = useState(false);
+  const [promo, setPromo] = useState('');
 
   const load = useCallback(() => {
     api.get('/users/vip').then((r) => setVip(r.data)).catch(() => {});
@@ -52,6 +54,15 @@ export default function RewardsPage() {
     } catch (e: unknown) { setMsg((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Could not claim cashback'); }
   };
 
+  const redeem = async () => {
+    if (!promo.trim()) return;
+    try {
+      const { data } = await api.post('/users/redeem', { code: promo.trim() });
+      setBalance(data.balance); sound.reward();
+      setMsg(`🎟️ Code redeemed · +${inr(data.amount)}!`); setPromo('');
+    } catch (e: unknown) { setMsg((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Invalid code'); }
+  };
+
   const refLink = typeof window !== 'undefined' && refs ? `${window.location.origin}/?ref=${refs.code}` : '';
   const copyLink = () => { navigator.clipboard?.writeText(refLink); setCopied(true); setTimeout(() => setCopied(false), 1500); };
 
@@ -65,10 +76,26 @@ export default function RewardsPage() {
         </div>
         {msg && <p className="rounded-lg bg-accent/15 px-3 py-2 text-sm text-accent-glow">{msg}</p>}
 
-        {/* Daily reward */}
-        <section className="glass p-4">
-          <h2 className="mb-3 text-sm font-bold uppercase tracking-widest text-white/40">Daily login bonus</h2>
-          <DailyReward />
+        {/* Daily reward + redeem */}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <section className="glass p-4">
+            <h2 className="mb-3 text-sm font-bold uppercase tracking-widest text-white/40">Daily login bonus</h2>
+            <DailyReward />
+          </section>
+          <section className="glass p-4">
+            <h2 className="mb-3 text-sm font-bold uppercase tracking-widest text-white/40">🎟️ Redeem a code</h2>
+            <div className="flex flex-wrap gap-2">
+              <input value={promo} onChange={(e) => setPromo(e.target.value.toUpperCase())} onKeyDown={(e) => e.key === 'Enter' && redeem()} placeholder="ENTER CODE" className="input min-w-0 flex-1 font-mono uppercase" />
+              <button onClick={redeem} className="btn-primary">Redeem</button>
+            </div>
+            <p className="mt-2 text-[11px] text-white/30">Got a promo code? Redeem it here for instant credits.</p>
+          </section>
+        </div>
+
+        {/* Spin the wheel */}
+        <section className="glass p-5">
+          <h2 className="mb-3 text-sm font-bold uppercase tracking-widest text-white/40">🎡 Daily lucky spin</h2>
+          <SpinWheel />
         </section>
 
         {/* VIP */}

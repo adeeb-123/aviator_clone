@@ -97,6 +97,29 @@ export interface BetHistoryItem {
   createdAt: string;
 }
 
+export interface SpinSegment { label: string; amount: number; weight: number; color: string }
+
+export interface LevelInfo {
+  level: number;
+  xp: number;
+  curMin: number;
+  nextMin: number;
+  toNext: number;
+  progressPct: number;
+  title: string;
+}
+
+export interface PromoCodeRow {
+  _id: string;
+  code: string;
+  amount: number;
+  maxUses: number;
+  uses: number;
+  active: boolean;
+  expiresAt?: string;
+  createdAt: string;
+}
+
 export type GamePhase = 'idle' | 'betting' | 'running' | 'crashed';
 
 export interface PublicBet {

@@ -38,6 +38,11 @@ router.get('/actions', ctrl.adminActions);
 router.post('/broadcast', ctrl.broadcast);
 router.delete('/chat/:id', ctrl.deleteChatMessage);
 
+// ── promo / bonus codes ──
+router.get('/promos', ctrl.listPromos);
+router.post('/promos', ctrl.createPromo);
+router.patch('/promos/:id', ctrl.updatePromo);
+
 router.get('/game/status', ctrl.gameStatus);
 router.post('/game/pause', ctrl.pauseGame);
 router.post('/game/force-crash', validate(adminCrashSchema), ctrl.forceCrash);
