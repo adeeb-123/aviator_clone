@@ -16,13 +16,33 @@ interface Tx {
 
 export default function WalletPage() {
   const user = useAuth((s) => s.user);
+  const setBalance = useAuth((s) => s.setBalance);
   const [amount, setAmount] = useState(20);
   const [txs, setTxs] = useState<Tx[]>([]);
   const [msg, setMsg] = useState('');
 
   const loadTx = () => api.get('/users/transactions').then(({ data }) => setTxs(data.transactions)).catch(() => {});
+
   useEffect(() => {
     loadTx();
+    // After returning from Stripe Checkout, confirm + credit the deposit (works on
+    // localhost, where the webhook can't reach us). Idempotent on the session id.
+    const params = new URLSearchParams(window.location.search);
+    const sessionId = params.get('session_id');
+    if (params.get('status') === 'success' && sessionId) {
+      api.post('/payments/confirm', { sessionId })
+        .then(({ data }) => {
+          if (data.balance !== undefined) setBalance(data.balance);
+          setMsg(data.credited ? `✓ Deposit successful — ₹${data.amount} added.` : data.already ? '✓ Deposit already credited.' : 'Payment not completed.');
+          loadTx();
+        })
+        .catch(() => setMsg('Could not confirm the deposit.'))
+        .finally(() => window.history.replaceState({}, '', '/wallet'));
+    } else if (params.get('status') === 'cancel') {
+      setMsg('Deposit cancelled.');
+      window.history.replaceState({}, '', '/wallet');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const deposit = async () => {
@@ -38,8 +58,9 @@ export default function WalletPage() {
   const withdraw = async () => {
     setMsg('');
     try {
-      await api.post('/payments/withdraw', { amount });
-      setMsg('Withdrawal queued.');
+      const { data } = await api.post('/payments/withdraw', { amount });
+      if (data.balance !== undefined) setBalance(data.balance);
+      setMsg(`✓ Withdrew ₹${amount.toFixed(2)} — new balance ₹${(data.balance ?? 0).toFixed(2)}.`);
       loadTx();
     } catch (e: unknown) {
       setMsg((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Withdraw failed');

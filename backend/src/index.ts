@@ -70,10 +70,18 @@ export async function bootstrap(): Promise<void> {
   const engine = initGameEngine(io);
   initAlerts(io);
   await setupSocket(io);
-  engine.start();
+
+  // If the port is already taken, EXIT — never keep a rogue game loop alive
+  // against the shared DB (that causes duplicate rounds / event chaos).
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    logger.error({ err: err.message }, `HTTP server error${err.code === 'EADDRINUSE' ? ' — port in use, another instance is running' : ''}; exiting`);
+    process.exit(1);
+  });
 
   server.listen(env.port, () => {
     logger.info(`🚀 Backend listening on :${env.port} (${env.nodeEnv})`);
+    // Start the game loop ONLY after we own the port (single authoritative engine).
+    engine.start();
   });
 
   const shutdown = async (signal: string) => {
