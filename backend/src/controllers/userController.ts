@@ -5,11 +5,31 @@ import { Bet } from '../models/Bet';
 import { Transaction } from '../models/Transaction';
 import { adjustBalance } from '../services/ledger';
 import { env } from '../config/env';
+import { VIP_TIERS, resolveVip } from '../config/vip';
+import { QUESTS, QuestMetric } from '../config/quests';
 import { asyncHandler } from '../middleware/error';
 import { badRequest, notFound } from '../utils/errors';
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const startOfDay = (d: Date) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Lifetime wagered (₹) — drives VIP tier. */
+async function lifetimeWagered(oid: Types.ObjectId): Promise<number> {
+  const [a] = await Bet.aggregate([{ $match: { userId: oid } }, { $group: { _id: null, wagered: { $sum: '$amount' } } }]);
+  return a?.wagered ?? 0;
+}
+
+/** Today's quest metrics from the player's bets placed since midnight. */
+async function questMetrics(oid: Types.ObjectId, since: Date): Promise<Record<QuestMetric, number>> {
+  const bets = await Bet.find({ userId: oid, createdAt: { $gte: since } }).select('status amount cashoutMultiplier').lean();
+  return {
+    bets: bets.length,
+    wins: bets.filter((b) => b.status === 'cashed-out').length,
+    wagered: bets.reduce((s, b) => s + (b.amount ?? 0), 0),
+    highMult: bets.filter((b) => (b.cashoutMultiplier ?? 0) >= 2).length,
+  };
+}
 
 interface Badge { id: string; label: string; icon: string; earned: boolean; hint: string; }
 
@@ -84,14 +104,101 @@ export const claimDaily = asyncHandler(async (req: Request, res: Response) => {
   const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
   const continued = user.lastDailyClaim && startOfDay(user.lastDailyClaim).getTime() === yesterday.getTime();
   const streak = continued ? user.dailyStreak + 1 : 1;
-  const reward = Math.min(env.game.dailyBase * streak, env.game.dailyCap);
+  const { current } = resolveVip(await lifetimeWagered(user._id));
+  const base = Math.min(env.game.dailyBase * streak, env.game.dailyCap);
+  const reward = round2(base * current.dailyMult);
 
   user.dailyStreak = streak;
   user.lastDailyClaim = now;
+  user.vipTier = current.tier;
   await user.save();
-  const balance = await adjustBalance({ userId: user._id, amount: reward, type: 'bonus', description: `Daily reward (day ${streak})` });
+  const balance = await adjustBalance({ userId: user._id, amount: reward, type: 'bonus', description: `Daily reward (day ${streak}, ${current.name})` });
 
-  res.json({ claimed: true, reward, streak, balance });
+  res.json({ claimed: true, reward, streak, tier: current, balance });
+});
+
+/** GET /users/vip — current loyalty tier, progress to next, and the full ladder. */
+export const getVip = asyncHandler(async (req: Request, res: Response) => {
+  const oid = new Types.ObjectId(req.user!.sub);
+  const wagered = await lifetimeWagered(oid);
+  const { current, next, progressPct, toNext } = resolveVip(wagered);
+  await User.updateOne({ _id: oid }, { $set: { vipTier: current.tier } });
+  res.json({ wagered: round2(wagered), tier: current, next, progressPct, toNext, tiers: VIP_TIERS });
+});
+
+/** POST /users/cashback — weekly cashback on net losses (Silver+). Once per 7 days. */
+export const claimCashback = asyncHandler(async (req: Request, res: Response) => {
+  const user = await User.findById(req.user!.sub);
+  if (!user) throw notFound('User not found');
+  const now = new Date();
+  const { current } = resolveVip(await lifetimeWagered(user._id));
+  if (current.cashback <= 0) throw badRequest('Cashback unlocks at Silver tier — keep playing to level up!');
+  if (user.lastCashbackAt && now.getTime() - user.lastCashbackAt.getTime() < WEEK_MS) {
+    const nextAt = new Date(user.lastCashbackAt.getTime() + WEEK_MS);
+    return res.json({ claimed: false, reason: 'Already claimed this week', nextAt });
+  }
+  const since = user.lastCashbackAt ?? new Date(now.getTime() - WEEK_MS);
+  const [a] = await Bet.aggregate([
+    { $match: { userId: user._id, createdAt: { $gte: since } } },
+    { $group: { _id: null, wagered: { $sum: '$amount' }, won: { $sum: '$payout' } } },
+  ]);
+  const netPL = (a?.won ?? 0) - (a?.wagered ?? 0);
+  user.lastCashbackAt = now;
+  await user.save();
+  if (netPL >= 0) return res.json({ claimed: false, reason: 'No net losses this week — nothing to refund 🎉' });
+  const cashback = round2(Math.abs(netPL) * current.cashback);
+  const balance = await adjustBalance({ userId: user._id, amount: cashback, type: 'bonus', description: `Weekly cashback (${current.name})` });
+  res.json({ claimed: true, cashback, tier: current, balance });
+});
+
+/** GET /users/referrals — the player's referral code, who they invited, and earnings. */
+export const getReferrals = asyncHandler(async (req: Request, res: Response) => {
+  const me = await User.findById(req.user!.sub).select('referralCode').lean();
+  const referrals = await User.find({ referredBy: req.user!.sub }).select('username createdAt').sort({ createdAt: -1 }).limit(100).lean();
+  res.json({
+    code: me?.referralCode ?? '',
+    count: referrals.length,
+    bonusPerReferral: env.game.referralBonus,
+    earned: round2(referrals.length * env.game.referralBonus),
+    referrals,
+  });
+});
+
+/** GET /users/quests — today's missions with live progress and claim state. */
+export const getQuests = asyncHandler(async (req: Request, res: Response) => {
+  const user = await User.findById(req.user!.sub);
+  if (!user) throw notFound('User not found');
+  const today = startOfDay(new Date());
+  const metrics = await questMetrics(user._id, today);
+  const claimedToday = user.questDay && startOfDay(user.questDay).getTime() === today.getTime() ? user.questClaimed : [];
+  const quests = QUESTS.map((q) => ({
+    ...q,
+    progress: Math.min(metrics[q.metric], q.target),
+    completed: metrics[q.metric] >= q.target,
+    claimed: claimedToday.includes(q.id),
+  }));
+  res.json({ quests, metrics });
+});
+
+/** POST /users/quests/:id/claim — claim a completed daily quest's reward. */
+export const claimQuest = asyncHandler(async (req: Request, res: Response) => {
+  const def = QUESTS.find((q) => q.id === req.params.id);
+  if (!def) throw notFound('Quest not found');
+  const user = await User.findById(req.user!.sub);
+  if (!user) throw notFound('User not found');
+  const today = startOfDay(new Date());
+  const isToday = user.questDay && startOfDay(user.questDay).getTime() === today.getTime();
+  const claimed = isToday ? user.questClaimed : [];
+  if (claimed.includes(def.id)) throw badRequest('Quest already claimed today');
+
+  const metrics = await questMetrics(user._id, today);
+  if (metrics[def.metric] < def.target) throw badRequest('Quest not complete yet');
+
+  user.questDay = today;
+  user.questClaimed = [...claimed, def.id];
+  await user.save();
+  const balance = await adjustBalance({ userId: user._id, amount: def.reward, type: 'bonus', description: `Quest: ${def.label}` });
+  res.json({ claimed: true, reward: def.reward, balance });
 });
 
 export const me = asyncHandler(async (req: Request, res: Response) => {

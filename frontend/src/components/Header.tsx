@@ -17,7 +17,10 @@ export default function Header() {
   const navLinks = (
     <>
       <Link href="/" className="hover:text-white" onClick={() => setMenuOpen(false)}>Play</Link>
+      {user && <Link href="/rewards" className="hover:text-white" onClick={() => setMenuOpen(false)}>🎁 Rewards</Link>}
       {user && <Link href="/stats" className="hover:text-white" onClick={() => setMenuOpen(false)}>My Stats</Link>}
+      {user && <Link href="/history" className="hover:text-white md:hidden" onClick={() => setMenuOpen(false)}>History</Link>}
+      {user && <Link href="/profile" className="hover:text-white md:hidden" onClick={() => setMenuOpen(false)}>Profile</Link>}
       <Link href="/fairness" className="hover:text-white" onClick={() => setMenuOpen(false)}>Provably Fair</Link>
       {user?.role === 'admin' && <Link href="/admin" className="text-gold hover:text-white" onClick={() => setMenuOpen(false)}>Admin</Link>}
     </>
@@ -50,7 +53,7 @@ export default function Header() {
             {user ? (
               <>
                 <Link href="/wallet" className="btn-primary text-sm">Wallet</Link>
-                <span className="hidden text-sm text-white/70 lg:block">{user.username}</span>
+                <Link href="/profile" className="hidden text-sm text-white/70 hover:text-white lg:block">{user.avatar ?? '👤'} {user.username}</Link>
                 <button className="btn bg-base-700 text-sm text-white/70" onClick={() => void logout()}>Logout</button>
               </>
             ) : (

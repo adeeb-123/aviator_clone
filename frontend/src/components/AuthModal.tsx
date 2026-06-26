@@ -22,7 +22,12 @@ export default function AuthModal({ open, onClose }: Props) {
   // into document.body lets the fixed overlay escape the Header's backdrop-blur
   // containing block, so it covers the full viewport and centers correctly.
   const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    setMounted(true);
+    // Capture ?ref=CODE from a referral link → prefill code + default to register.
+    const ref = new URLSearchParams(window.location.search).get('ref');
+    if (ref) { setForm((f) => ({ ...f, referralCode: ref })); setMode('register'); }
+  }, []);
 
   // Lock body scroll while open.
   useEffect(() => {

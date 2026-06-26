@@ -29,6 +29,9 @@ export interface IUser extends Document {
   lastActiveAt: Date;
   dailyStreak: number;
   lastDailyClaim?: Date;
+  questDay?: Date;
+  questClaimed: string[];
+  lastCashbackAt?: Date;
   createdAt: Date;
   updatedAt: Date;
   setPassword(plain: string): Promise<void>;
@@ -66,6 +69,9 @@ const userSchema = new Schema<IUser>(
     lastActiveAt: { type: Date, default: Date.now },
     dailyStreak: { type: Number, default: 0 },
     lastDailyClaim: { type: Date },
+    questDay: { type: Date },
+    questClaimed: { type: [String], default: [] },
+    lastCashbackAt: { type: Date },
   },
   { timestamps: true },
 );

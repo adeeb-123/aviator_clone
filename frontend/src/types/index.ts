@@ -42,6 +42,61 @@ export interface FavoriteStrategy {
   autoCashout?: number;
 }
 
+export interface VipTier {
+  tier: number;
+  name: string;
+  icon: string;
+  min: number;
+  cashback: number;
+  dailyMult: number;
+  perk: string;
+}
+
+export interface VipInfo {
+  wagered: number;
+  tier: VipTier;
+  next: VipTier | null;
+  progressPct: number;
+  toNext: number;
+  tiers: VipTier[];
+}
+
+export interface ReferralEntry {
+  _id: string;
+  username: string;
+  createdAt: string;
+}
+
+export interface ReferralInfo {
+  code: string;
+  count: number;
+  bonusPerReferral: number;
+  earned: number;
+  referrals: ReferralEntry[];
+}
+
+export interface Quest {
+  id: string;
+  label: string;
+  icon: string;
+  target: number;
+  metric: string;
+  reward: number;
+  progress: number;
+  completed: boolean;
+  claimed: boolean;
+}
+
+export interface BetHistoryItem {
+  _id: string;
+  roundId: number;
+  amount: number;
+  status: 'pending' | 'cashed-out' | 'lost';
+  cashoutMultiplier?: number;
+  payout?: number;
+  createdAt: string;
+}
+
 export type GamePhase = 'idle' | 'betting' | 'running' | 'crashed';
 
 export interface PublicBet {

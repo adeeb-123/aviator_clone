@@ -5,6 +5,8 @@ import { motion } from 'framer-motion';
 import { getSocket, EVENTS } from '@/lib/socket';
 import { useAuth, useGame } from '@/lib/store';
 import { sound } from '@/lib/sound';
+import { api } from '@/lib/api';
+import type { FavoriteStrategy } from '@/types';
 
 interface Props {
   slot: 1 | 2;
@@ -36,6 +38,24 @@ export default function BetPanel({ slot }: Props) {
 
   // refs so socket callbacks read current values
   const r = useRef({ running: false, placed: false, stake: 0, won: false, payout: 0, pl: 0, cur: 10, base: 10, roundsLeft: -1, stopP: 0, stopL: 0, target: 2 });
+
+  // ── saved strategies (favorites) ──
+  const [favorites, setFavorites] = useState<FavoriteStrategy[]>([]);
+  useEffect(() => { if (user) api.get('/users/favorites').then((res) => setFavorites(res.data.favorites)).catch(() => {}); }, [user]);
+  const applyFav = (name: string) => {
+    const f = favorites.find((x) => x.name === name);
+    if (!f) return;
+    setAmount(f.amount);
+    if (f.autoCashout) setAutoCashout(String(f.autoCashout));
+  };
+  const saveFav = async () => {
+    const name = typeof window !== 'undefined' ? window.prompt('Name this strategy:') : '';
+    if (!name) return;
+    try {
+      const { data } = await api.post('/users/favorites', { name: name.slice(0, 40), amount, autoCashout: Number(autoCashout) || undefined });
+      setFavorites(data.favorites); setMsg('✓ Strategy saved');
+    } catch { setMsg('Could not save strategy'); }
+  };
 
   // reset per-round manual flags
   useEffect(() => {
@@ -142,6 +162,13 @@ export default function BetPanel({ slot }: Props) {
         </label>
       ) : (
         <div className="mt-3 space-y-2 rounded-lg bg-base-700/30 p-2.5 text-xs">
+          <div className="flex items-center gap-2">
+            <select disabled={lock} value="" onChange={(e) => applyFav(e.target.value)} className="input min-w-0 flex-1 py-1 text-xs">
+              <option value="">⭐ Load strategy…</option>
+              {favorites.map((f) => <option key={f.name} value={f.name}>{f.name} (₹{f.amount}{f.autoCashout ? ` @${f.autoCashout}x` : ''})</option>)}
+            </select>
+            <button disabled={lock} onClick={saveFav} className="btn bg-base-600 px-2 py-1 text-xs text-white/80">💾 Save</button>
+          </div>
           <div className="flex items-center justify-between gap-2">
             <span className="text-white/50">Cash out @</span>
             <input type="number" step="0.1" min={1.01} disabled={lock} value={autoCashout} onChange={(e) => setAutoCashout(e.target.value)} className="input max-w-[90px] py-1 text-right" />

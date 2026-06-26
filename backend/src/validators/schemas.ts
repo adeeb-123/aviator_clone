@@ -14,9 +14,9 @@ export const loginSchema = z.object({
 });
 
 export const updateProfileSchema = z.object({
-  avatar: z.string().url().optional(),
+  avatar: z.string().max(300).optional(), // emoji or image URL
   bio: z.string().max(280).optional(),
-  username: z.string().min(3).max(20).optional(),
+  username: z.string().min(3).max(20).regex(/^[a-zA-Z0-9_]+$/).optional(),
 });
 
 export const favoriteSchema = z.object({

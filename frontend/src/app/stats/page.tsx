@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import Header from '@/components/Header';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/store';
@@ -34,8 +35,12 @@ export default function StatsPage() {
       <Header />
       <main className="mx-auto max-w-5xl space-y-6 px-4 py-8">
         <div>
-          <h1 className="text-3xl font-black">My Stats {user && <span className="text-white/40">· {user.username}</span>}</h1>
+          <h1 className="text-2xl font-black sm:text-3xl">My Stats {user && <span className="text-white/40">· {user.username}</span>}</h1>
           <p className="text-sm text-white/40">Your lifetime performance and achievements.</p>
+          <div className="mt-2 flex flex-wrap gap-3 text-sm">
+            <Link href="/history" className="text-accent-glow hover:underline">📜 Full bet history →</Link>
+            <Link href="/rewards" className="text-accent-glow hover:underline">🎁 Rewards →</Link>
+          </div>
         </div>
 
         {err && <p className="text-loss">{err}</p>}
