@@ -17,7 +17,7 @@ interface Tx {
 export default function WalletPage() {
   const user = useAuth((s) => s.user);
   const setBalance = useAuth((s) => s.setBalance);
-  const [amount, setAmount] = useState(20);
+  const [amount, setAmount] = useState(50);
   const [txs, setTxs] = useState<Tx[]>([]);
   const [msg, setMsg] = useState('');
 
@@ -50,8 +50,9 @@ export default function WalletPage() {
     try {
       const { data } = await api.post('/payments/checkout', { amount });
       if (data.url) window.location.href = data.url;
-    } catch {
-      setMsg('Stripe not configured — set STRIPE_SECRET_KEY to enable deposits.');
+    } catch (e: unknown) {
+      // Surface the real backend reason (e.g. "Minimum deposit is ₹50") instead of a generic message.
+      setMsg((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Could not start the deposit. Please try again.');
     }
   };
 

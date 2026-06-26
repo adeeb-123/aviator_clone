@@ -37,6 +37,8 @@ async function creditDepositOnce(userId: string, credits: number, sessionId: str
 export const createCheckout = asyncHandler(async (req: Request, res: Response) => {
   if (!stripe) throw badRequest('Stripe not configured');
   const { amount } = req.body as { amount: number };
+  // Stripe rejects charges under ~$0.50; enforce a clear INR minimum.
+  if (amount < env.game.minDeposit) throw badRequest(`Minimum deposit is ₹${env.game.minDeposit}`);
 
   const session = await stripe.checkout.sessions.create({
     mode: 'payment',

@@ -50,6 +50,7 @@ export const env = {
     tickMs: 100,
     welcomeBonus: parseFloat(process.env.WELCOME_BONUS ?? '100'),
     referralBonus: parseFloat(process.env.REFERRAL_BONUS ?? '25'),
+    minDeposit: parseFloat(process.env.MIN_DEPOSIT ?? '50'), // Stripe needs ≈ $0.50 min
   },
 
   // Admin "force crash" overrides provably-fair — keep it ON only in dev/testing.
