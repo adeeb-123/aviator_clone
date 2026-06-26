@@ -8,6 +8,7 @@ export interface IChat extends Document {
   message: string;
   room: string;
   deleted: boolean;
+  reactions: { emoji: string; userId: Types.ObjectId }[];
   createdAt: Date;
 }
 
@@ -19,6 +20,7 @@ const chatSchema = new Schema<IChat>(
     message: { type: String, required: true, maxlength: 280 },
     room: { type: String, default: 'global', index: true },
     deleted: { type: Boolean, default: false },
+    reactions: { type: [{ emoji: String, userId: { type: Schema.Types.ObjectId, ref: 'User' } }], default: [] },
   },
   { timestamps: { createdAt: true, updatedAt: false } },
 );

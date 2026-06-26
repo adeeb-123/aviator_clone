@@ -74,6 +74,7 @@ interface GameState {
   set: (partial: Partial<GameState>) => void;
   addChat: (m: ChatMessage) => void;
   removeChat: (id: string) => void;
+  setReactions: (id: string, reactions: Record<string, number>) => void;
 }
 
 export const useGame = create<GameState>((set) => ({
@@ -90,6 +91,7 @@ export const useGame = create<GameState>((set) => ({
   set: (partial) => set(partial),
   addChat: (m) => set((s) => ({ chat: [...s.chat.slice(-80), m] })),
   removeChat: (id) => set((s) => ({ chat: s.chat.filter((m) => m.id !== id) })),
+  setReactions: (id, reactions) => set((s) => ({ chat: s.chat.map((m) => (m.id === id ? { ...m, reactions } : m)) })),
 }));
 
 interface GameControlState {

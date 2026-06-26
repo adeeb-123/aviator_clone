@@ -1,4 +1,5 @@
 import { Server, Socket } from 'socket.io';
+import { Types } from 'mongoose';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { redis, isRedisAvailable } from '../config/redis';
 import { verifyAccessToken } from '../utils/jwt';
@@ -29,7 +30,10 @@ const RATE: Record<string, { max: number; windowMs: number }> = {
   'action:cashout': { max: 20, windowMs: 5000 },
   'action:chat': { max: 5, windowMs: 10000 },
   'action:typing': { max: 15, windowMs: 10000 },
+  'action:react': { max: 20, windowMs: 10000 },
 };
+
+const REACTIONS = ['👍', '❤️', '😂', '🔥', '😮', '💰'];
 function rateLimited(socket: Socket, action: string): boolean {
   const cfg = RATE[action];
   if (!cfg) return false;
@@ -134,6 +138,28 @@ export async function setupSocket(io: Server): Promise<void> {
           message: chat.message,
           createdAt: chat.createdAt,
         });
+        ack?.({ ok: true });
+      } catch (err) {
+        ack?.({ ok: false, error: (err as Error).message });
+      }
+    });
+
+    socket.on('action:react', async (data, ack) => {
+      try {
+        if (!socket.authUser) throw new Error('Login required');
+        if (rateLimited(socket, 'action:react')) throw new Error('Slow down');
+        const emoji = String(data?.emoji ?? '');
+        if (!REACTIONS.includes(emoji)) throw new Error('Invalid reaction');
+        const chat = await Chat.findById(data?.messageId);
+        if (!chat) throw new Error('Message not found');
+        const uid = socket.authUser.id;
+        const idx = chat.reactions.findIndex((r) => String(r.userId) === uid && r.emoji === emoji);
+        if (idx >= 0) chat.reactions.splice(idx, 1);
+        else chat.reactions.push({ emoji, userId: new Types.ObjectId(uid) });
+        await chat.save();
+        const counts: Record<string, number> = {};
+        for (const r of chat.reactions) counts[r.emoji] = (counts[r.emoji] ?? 0) + 1;
+        io.emit('chat:reaction', { id: String(chat._id), reactions: counts });
         ack?.({ ok: true });
       } catch (err) {
         ack?.({ ok: false, error: (err as Error).message });

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { api } from '@/lib/api';
 import { getSocket, EVENTS } from '@/lib/socket';
 import type { LeaderboardEntry } from '@/types';
@@ -54,7 +55,7 @@ export default function Leaderboard() {
         {entries.map((e, i) => (
           <div key={e.userId} className="flex items-center justify-between rounded-lg bg-base-700/40 px-2 py-1.5 text-sm">
             <span className="w-6 text-center">{medal(i)}</span>
-            <span className="flex-1 truncate px-2 text-white/80">{e.username}</span>
+            <Link href={`/u/${e.username}`} className="flex-1 truncate px-2 text-white/80 hover:text-accent-glow hover:underline">{e.username}</Link>
             <span className="text-xs text-white/40">{e.bestMultiplier?.toFixed(2)}x</span>
             <span className="ml-2 font-bold text-win">+₹{e.totalPayout.toFixed(0)}</span>
           </div>

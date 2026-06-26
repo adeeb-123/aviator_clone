@@ -64,6 +64,11 @@ export class GameEngine {
     this.io.emit(event, payload);
   }
 
+  /** Emit a private event to one user's room (e.g. a balance update). */
+  emitToUser(userId: string, event: string, payload: unknown): void {
+    this.io.to(`user:${userId}`).emit(event, payload);
+  }
+
   // ── public state accessors ───────────────────────────────
   getPhase(): Phase {
     return this.phase;

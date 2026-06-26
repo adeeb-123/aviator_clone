@@ -8,7 +8,10 @@ import { env } from '../config/env';
 import { VIP_TIERS, resolveVip } from '../config/vip';
 import { QUESTS, QuestMetric } from '../config/quests';
 import { SPIN_SEGMENTS, pickSpinIndex, xpFor, levelFor, levelTitle } from '../config/rewards';
+import { BADGES, BadgeStats } from '../config/badges';
 import { PromoCode } from '../models/PromoCode';
+import { Chat } from '../models/Chat';
+import { getGameEngine } from '../services/gameEngine';
 import { asyncHandler } from '../middleware/error';
 import { badRequest, notFound } from '../utils/errors';
 
@@ -33,11 +36,8 @@ async function questMetrics(oid: Types.ObjectId, since: Date): Promise<Record<Qu
   };
 }
 
-interface Badge { id: string; label: string; icon: string; earned: boolean; hint: string; }
-
-/** GET /users/stats — the player's personal performance + earned badges. */
-export const getStats = asyncHandler(async (req: Request, res: Response) => {
-  const oid = new Types.ObjectId(req.user!.sub);
+/** Aggregate a user's lifetime bet stats + derived fields (shared by stats + profile). */
+async function summarise(oid: Types.ObjectId, dailyStreak = 0) {
   const [agg] = await Bet.aggregate([
     { $match: { userId: oid } },
     {
@@ -66,33 +66,63 @@ export const getStats = asyncHandler(async (req: Request, res: Response) => {
   const lvl = levelFor(xpFor(a.bets, a.wins));
   const level = { ...lvl, title: levelTitle(lvl.level) };
 
-  const badges: Badge[] = [
-    { id: 'first-win', icon: '🎯', label: 'First Win', earned: a.wins >= 1, hint: 'Win a round' },
-    { id: 'high-roller', icon: '💰', label: 'High Roller', earned: a.biggestBet >= 500, hint: 'Bet ₹500+ in one go' },
-    { id: 'lucky', icon: '🍀', label: 'Lucky', earned: (a.biggestMultiplier ?? 0) >= 10, hint: 'Cash out at 10x+' },
-    { id: 'sharp', icon: '🎓', label: 'Sharp Shooter', earned: a.bets >= 20 && winRate >= 60, hint: '60%+ win rate over 20 bets' },
-    { id: 'veteran', icon: '🛡️', label: 'Veteran', earned: a.bets >= 100, hint: 'Place 100 bets' },
-    { id: 'whale', icon: '🐋', label: 'Whale', earned: a.wagered >= 10000, hint: 'Wager ₹10,000 total' },
-    { id: 'streak', icon: '🔥', label: 'On Fire', earned: winStreak >= 3, hint: 'Win 3 in a row' },
-    { id: 'profit', icon: '📈', label: 'In Profit', earned: netPL > 0, hint: 'Be net positive' },
-  ];
+  const stats = {
+    bets: a.bets, wins: a.wins, losses: a.bets - a.wins, winRate,
+    wagered: round2(a.wagered), won: round2(a.won), netPL,
+    biggestMultiplier: round2(a.biggestMultiplier ?? 0),
+    biggestWin: round2(a.biggestWin ?? 0), biggestBet: round2(a.biggestBet ?? 0),
+    avgBet: round2(a.avgBet ?? 0), winStreak,
+  };
+  const badgeStats: BadgeStats = {
+    bets: a.bets, wins: a.wins, wagered: a.wagered, biggestBet: a.biggestBet ?? 0,
+    biggestMultiplier: a.biggestMultiplier ?? 0, biggestWin: a.biggestWin ?? 0,
+    winRate, winStreak, netPL, dailyStreak, level: level.level,
+  };
+  return { stats, badgeStats, level };
+}
 
+/** GET /users/stats — the player's personal performance + earned/claimable badges. */
+export const getStats = asyncHandler(async (req: Request, res: Response) => {
+  const oid = new Types.ObjectId(req.user!.sub);
+  const user = await User.findById(oid).select('dailyStreak claimedBadges').lean();
+  const { stats, badgeStats, level } = await summarise(oid, user?.dailyStreak ?? 0);
+  const claimed = new Set(user?.claimedBadges ?? []);
+  const badges = BADGES.map((b) => ({
+    id: b.id, icon: b.icon, label: b.label, hint: b.hint, reward: b.reward,
+    earned: b.earned(badgeStats), claimed: claimed.has(b.id),
+  }));
+  res.json({ stats, badges, level });
+});
+
+/** POST /users/badges/:id/claim — claim a one-time milestone reward for an earned badge. */
+export const claimBadge = asyncHandler(async (req: Request, res: Response) => {
+  const def = BADGES.find((b) => b.id === req.params.id);
+  if (!def) throw notFound('Badge not found');
+  if (def.reward <= 0) throw badRequest('This badge has no reward to claim');
+  const user = await User.findById(req.user!.sub);
+  if (!user) throw notFound('User not found');
+  if (user.claimedBadges.includes(def.id)) throw badRequest('Reward already claimed');
+  const { badgeStats } = await summarise(user._id, user.dailyStreak);
+  if (!def.earned(badgeStats)) throw badRequest('Badge not earned yet');
+  user.claimedBadges.push(def.id);
+  await user.save();
+  const balance = await adjustBalance({ userId: user._id, amount: def.reward, type: 'bonus', description: `Achievement: ${def.label}` });
+  res.json({ claimed: true, reward: def.reward, balance });
+});
+
+/** GET /users/profile/:username — public profile (no balance/email). */
+export const getPublicProfile = asyncHandler(async (req: Request, res: Response) => {
+  const user = await User.findOne({ username: req.params.username }).select('username avatar bio vipTier dailyStreak createdAt claimedBadges').lean();
+  if (!user) throw notFound('Player not found');
+  const { stats, badgeStats, level } = await summarise(user._id, user.dailyStreak ?? 0);
+  const earnedBadges = BADGES.filter((b) => b.earned(badgeStats)).map((b) => ({ id: b.id, icon: b.icon, label: b.label }));
   res.json({
-    stats: {
-      bets: a.bets,
-      wins: a.wins,
-      losses: a.bets - a.wins,
-      winRate,
-      wagered: round2(a.wagered),
-      won: round2(a.won),
-      netPL,
-      biggestMultiplier: round2(a.biggestMultiplier ?? 0),
-      biggestWin: round2(a.biggestWin ?? 0),
-      avgBet: round2(a.avgBet ?? 0),
-      winStreak,
+    profile: {
+      username: user.username, avatar: user.avatar, bio: user.bio,
+      vipTier: user.vipTier, level, joinedAt: user.createdAt,
+      stats: { bets: stats.bets, wins: stats.wins, winRate: stats.winRate, biggestMultiplier: stats.biggestMultiplier, biggestWin: stats.biggestWin },
+      badges: earnedBadges, badgeCount: earnedBadges.length,
     },
-    badges,
-    level,
   });
 });
 
@@ -246,6 +276,33 @@ export const redeemPromo = asyncHandler(async (req: Request, res: Response) => {
   await promo.save();
   const balance = await adjustBalance({ userId: req.user!.sub, amount: promo.amount, type: 'bonus', description: `Promo code ${code}` });
   res.json({ redeemed: true, amount: promo.amount, balance });
+});
+
+/** POST /users/rain — split a sum among recent active chatters (spread the love 🌧️). */
+export const rain = asyncHandler(async (req: Request, res: Response) => {
+  const amount = Number(req.body?.amount);
+  if (!Number.isFinite(amount) || amount < 10) throw badRequest('Minimum rain is ₹10');
+  if (amount > 10000) throw badRequest('Maximum rain is ₹10,000');
+  const since = new Date(Date.now() - 20 * 60 * 1000);
+  const ids = (await Chat.find({ createdAt: { $gte: since }, userId: { $ne: req.user!.sub } }).distinct('userId')).slice(0, 15);
+  if (ids.length === 0) throw badRequest('No active chatters to rain on right now');
+  const share = Math.floor((amount / ids.length) * 100) / 100;
+  if (share <= 0) throw badRequest('Amount too small to split');
+  const total = round2(share * ids.length);
+
+  const balance = await adjustBalance({ userId: req.user!.sub, amount: -total, type: 'withdraw', description: `Chat rain on ${ids.length} players` });
+  for (const id of ids) {
+    const b = await adjustBalance({ userId: id, amount: share, type: 'bonus', description: `Rain from ${req.user!.username}` });
+    getGameEngine().emitToUser(String(id), 'balance:update', { balance: b });
+  }
+  getGameEngine().emit('chat:message', {
+    id: 'rain-' + req.user!.sub + '-' + total,
+    username: '🌧️ Rain',
+    avatar: '🌧️',
+    message: `${req.user!.username} made it rain ₹${total} on ${ids.length} players! 💸`,
+    createdAt: new Date(),
+  });
+  res.json({ ok: true, total, recipients: ids.length, share, balance });
 });
 
 export const me = asyncHandler(async (req: Request, res: Response) => {

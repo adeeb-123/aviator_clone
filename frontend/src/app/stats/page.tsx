@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Header from '@/components/Header';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/store';
+import { sound } from '@/lib/sound';
 import { inrCompact } from '@/lib/format';
 import type { PlayerStats, Badge, LevelInfo } from '@/types';
 
@@ -23,10 +24,15 @@ export default function StatsPage() {
   const [badges, setBadges] = useState<Badge[]>([]);
   const [level, setLevel] = useState<LevelInfo | null>(null);
   const [err, setErr] = useState('');
+  const setBalance = useAuth((s) => s.setBalance);
 
-  useEffect(() => {
-    api.get('/users/stats').then(({ data }) => { setStats(data.stats); setBadges(data.badges); setLevel(data.level); }).catch(() => setErr('Please log in to see your stats.'));
-  }, []);
+  const load = () => api.get('/users/stats').then(({ data }) => { setStats(data.stats); setBadges(data.badges); setLevel(data.level); }).catch(() => setErr('Please log in to see your stats.'));
+  useEffect(() => { load(); }, []);
+
+  const claimBadge = async (id: string) => {
+    try { const { data } = await api.post(`/users/badges/${id}/claim`); setBalance(data.balance); sound.reward(); load(); }
+    catch { /* already claimed / not earned */ }
+  };
 
   const inr = inrCompact; // compact (₹1.2L / ₹5.3k) so big values never overflow the cards
   const earned = badges.filter((b) => b.earned).length;
@@ -82,13 +88,21 @@ export default function StatsPage() {
             <div className="glass p-5">
               <h2 className="mb-3 font-semibold">Achievements <span className="text-sm font-normal text-white/40">· {earned}/{badges.length} unlocked</span></h2>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                {badges.map((b) => (
-                  <div key={b.id} className={`rounded-xl border p-3 text-center transition ${b.earned ? 'border-gold/50 bg-gold/10' : 'border-white/5 bg-base-700/30 opacity-50'}`} title={b.hint}>
-                    <div className="text-3xl">{b.earned ? b.icon : '🔒'}</div>
-                    <div className="mt-1 text-sm font-bold">{b.label}</div>
-                    <div className="text-[11px] text-white/40">{b.hint}</div>
-                  </div>
-                ))}
+                {badges.map((b) => {
+                  const claimable = b.earned && !b.claimed && (b.reward ?? 0) > 0;
+                  return (
+                    <div key={b.id} className={`relative rounded-xl border p-3 text-center transition ${b.earned ? 'border-gold/50 bg-gold/10' : 'border-white/5 bg-base-700/30 opacity-50'}`} title={b.hint}>
+                      <div className="text-3xl">{b.earned ? b.icon : '🔒'}</div>
+                      <div className="mt-1 text-sm font-bold">{b.label}</div>
+                      <div className="text-[11px] text-white/40">{b.hint}</div>
+                      {claimable ? (
+                        <button onClick={() => claimBadge(b.id)} className="btn-primary mt-2 w-full px-2 py-1 text-xs">🎁 Claim ₹{b.reward}</button>
+                      ) : b.earned && b.claimed && (b.reward ?? 0) > 0 ? (
+                        <div className="mt-2 text-[11px] font-semibold text-win">✓ Reward claimed</div>
+                      ) : null}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </>

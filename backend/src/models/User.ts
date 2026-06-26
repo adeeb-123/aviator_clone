@@ -31,6 +31,7 @@ export interface IUser extends Document {
   lastDailyClaim?: Date;
   questDay?: Date;
   questClaimed: string[];
+  claimedBadges: string[];
   lastCashbackAt?: Date;
   chatMutedUntil?: Date;
   lastSpinAt?: Date;
@@ -73,6 +74,7 @@ const userSchema = new Schema<IUser>(
     lastDailyClaim: { type: Date },
     questDay: { type: Date },
     questClaimed: { type: [String], default: [] },
+    claimedBadges: { type: [String], default: [] },
     lastCashbackAt: { type: Date },
     chatMutedUntil: { type: Date },
     lastSpinAt: { type: Date },

@@ -34,6 +34,20 @@ export interface Badge {
   icon: string;
   earned: boolean;
   hint: string;
+  reward?: number;
+  claimed?: boolean;
+}
+
+export interface PublicProfile {
+  username: string;
+  avatar?: string;
+  bio?: string;
+  vipTier: number;
+  level: LevelInfo;
+  joinedAt: string;
+  stats: { bets: number; wins: number; winRate: number; biggestMultiplier: number; biggestWin: number };
+  badges: { id: string; icon: string; label: string }[];
+  badgeCount: number;
 }
 
 export interface FavoriteStrategy {
@@ -180,6 +194,7 @@ export interface ChatMessage {
   avatar?: string;
   message: string;
   createdAt: string;
+  reactions?: Record<string, number>;
 }
 
 export interface AdminAlert {
