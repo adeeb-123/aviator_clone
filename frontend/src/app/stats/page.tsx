@@ -4,13 +4,14 @@ import { useEffect, useState } from 'react';
 import Header from '@/components/Header';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/store';
+import { inrCompact } from '@/lib/format';
 import type { PlayerStats, Badge } from '@/types';
 
 function Stat({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
-    <div className="glass p-4">
-      <div className="text-[11px] uppercase tracking-widest text-white/40">{label}</div>
-      <div className={`mt-1 text-2xl font-black ${tone ?? 'text-white'}`}>{value}</div>
+    <div className="glass min-w-0 overflow-hidden p-4">
+      <div className="truncate text-[11px] uppercase tracking-widest text-white/40">{label}</div>
+      <div className={`mt-1 truncate text-xl font-black tabular-nums sm:text-2xl ${tone ?? 'text-white'}`} title={value}>{value}</div>
     </div>
   );
 }
@@ -25,7 +26,7 @@ export default function StatsPage() {
     api.get('/users/stats').then(({ data }) => { setStats(data.stats); setBadges(data.badges); }).catch(() => setErr('Please log in to see your stats.'));
   }, []);
 
-  const inr = (n: number) => '₹' + (n ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+  const inr = inrCompact; // compact (₹1.2L / ₹5.3k) so big values never overflow the cards
   const earned = badges.filter((b) => b.earned).length;
 
   return (
