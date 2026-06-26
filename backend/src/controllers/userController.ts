@@ -75,17 +75,29 @@ export const transfer = asyncHandler(async (req: Request, res: Response) => {
   if (!recipient) throw notFound('Recipient not found');
   if (String(recipient._id) === req.user!.sub) throw badRequest('Cannot transfer to yourself');
 
-  const balance = await adjustBalance({
+  // Debit the sender first (atomic, with sufficient-funds guard).
+  let balance = await adjustBalance({
     userId: req.user!.sub,
     amount: -amount,
     type: 'withdraw',
     description: `Transfer to ${toUsername}`,
   });
-  await adjustBalance({
-    userId: recipient._id,
-    amount,
-    type: 'deposit',
-    description: `Transfer from ${req.user!.username}`,
-  });
+  // Credit the recipient; if that fails, refund the sender so money is never lost.
+  try {
+    await adjustBalance({
+      userId: recipient._id,
+      amount,
+      type: 'deposit',
+      description: `Transfer from ${req.user!.username}`,
+    });
+  } catch (err) {
+    balance = await adjustBalance({
+      userId: req.user!.sub,
+      amount,
+      type: 'refund',
+      description: `Refund — failed transfer to ${toUsername}`,
+    });
+    throw badRequest('Transfer failed — your funds were refunded');
+  }
   res.json({ balance });
 });

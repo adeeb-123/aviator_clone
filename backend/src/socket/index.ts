@@ -22,6 +22,25 @@ declare module 'socket.io' {
 
 const EMOJI_OK = /^[\s\S]{1,280}$/;
 
+// Per-socket rate limits (fixed window) to stop floods / abuse of realtime actions.
+const RATE: Record<string, { max: number; windowMs: number }> = {
+  'action:placeBet': { max: 12, windowMs: 5000 },
+  'action:cashout': { max: 20, windowMs: 5000 },
+  'action:chat': { max: 5, windowMs: 10000 },
+  'action:typing': { max: 15, windowMs: 10000 },
+};
+function rateLimited(socket: Socket, action: string): boolean {
+  const cfg = RATE[action];
+  if (!cfg) return false;
+  const now = Date.now();
+  const store = (socket.data.rl ??= {}) as Record<string, { count: number; reset: number }>;
+  const b = store[action] ?? { count: 0, reset: now + cfg.windowMs };
+  if (now > b.reset) { b.count = 0; b.reset = now + cfg.windowMs; }
+  b.count += 1;
+  store[action] = b;
+  return b.count > cfg.max;
+}
+
 export async function setupSocket(io: Server): Promise<void> {
   // Redis adapter for horizontal scaling (skipped if Redis is unavailable —
   // single-instance dev mode still works without it).
@@ -62,6 +81,7 @@ export async function setupSocket(io: Server): Promise<void> {
     socket.on(EVENTS.PLACE_BET, async (data, ack) => {
       try {
         if (!socket.authUser) throw new Error('Login required');
+        if (rateLimited(socket, EVENTS.PLACE_BET)) throw new Error('Too many requests — slow down');
         const result = await engine.placeBet({
           userId: socket.authUser.id,
           username: socket.authUser.username,
@@ -78,6 +98,7 @@ export async function setupSocket(io: Server): Promise<void> {
     socket.on(EVENTS.CASHOUT, async (data, ack) => {
       try {
         if (!socket.authUser) throw new Error('Login required');
+        if (rateLimited(socket, EVENTS.CASHOUT)) throw new Error('Too many requests — slow down');
         const result = await engine.cashout(socket.authUser.id, data.slot === 2 ? 2 : 1);
         ack?.({ ok: true, ...result });
       } catch (err) {
@@ -88,6 +109,7 @@ export async function setupSocket(io: Server): Promise<void> {
     socket.on(EVENTS.SEND_CHAT, async (data, ack) => {
       try {
         if (!socket.authUser) throw new Error('Login required');
+        if (rateLimited(socket, EVENTS.SEND_CHAT)) throw new Error('You are sending messages too fast');
         const message = String(data.message ?? '').trim();
         if (!message || !EMOJI_OK.test(message)) throw new Error('Invalid message');
 
@@ -115,7 +137,9 @@ export async function setupSocket(io: Server): Promise<void> {
     });
 
     socket.on(EVENTS.TYPING, () => {
-      if (socket.authUser) socket.broadcast.emit(EVENTS.CHAT_TYPING, { username: socket.authUser.username });
+      if (socket.authUser && !rateLimited(socket, EVENTS.TYPING)) {
+        socket.broadcast.emit(EVENTS.CHAT_TYPING, { username: socket.authUser.username });
+      }
     });
 
     socket.on('disconnect', () => {

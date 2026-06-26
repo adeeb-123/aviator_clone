@@ -6,8 +6,9 @@ import { ServerSeed } from '../models/ServerSeed';
 import { adjustBalance } from '../services/ledger';
 import { getActiveSeed, rotateSeed } from '../services/seedManager';
 import { getGameEngine } from '../services/gameEngine';
+import { env } from '../config/env';
 import { asyncHandler } from '../middleware/error';
-import { notFound } from '../utils/errors';
+import { notFound, forbidden } from '../utils/errors';
 
 export const dashboard = asyncHandler(async (_req: Request, res: Response) => {
   const engine = getGameEngine();
@@ -107,6 +108,9 @@ export const pauseGame = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const forceCrash = asyncHandler(async (req: Request, res: Response) => {
+  if (!env.allowForceCrash) {
+    throw forbidden('Force-crash is disabled (ALLOW_FORCE_CRASH=false) — it would break provably-fair.');
+  }
   getGameEngine().forceCrashPoint(req.body.crashPoint);
   res.json(getGameEngine().getAdminStatus());
 });

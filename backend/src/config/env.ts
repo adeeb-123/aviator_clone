@@ -48,7 +48,13 @@ export const env = {
     bettingWindowMs: parseInt(process.env.BETTING_WINDOW_MS ?? '10000', 10),
     roundPauseMs: parseInt(process.env.ROUND_PAUSE_MS ?? '6000', 10),
     tickMs: 100,
+    welcomeBonus: parseFloat(process.env.WELCOME_BONUS ?? '100'),
+    referralBonus: parseFloat(process.env.REFERRAL_BONUS ?? '25'),
   },
+
+  // Admin "force crash" overrides provably-fair — keep it ON only in dev/testing.
+  // Set ALLOW_FORCE_CRASH=false in production.
+  allowForceCrash: process.env.ALLOW_FORCE_CRASH !== 'false',
 
   admin: {
     email: process.env.ADMIN_EMAIL ?? 'admin@aviator.local',

@@ -187,6 +187,14 @@ export class GameEngine {
     const multiplier = this.computeMultiplier(elapsed);
 
     if (multiplier >= this.crashPoint) {
+      // Fairness: if a tick jumps past both an auto-cashout target AND the crash
+      // point, honour auto-cashouts whose target was below the crash (they would
+      // have triggered first) at their target, then crash.
+      for (const bet of this.liveBets.values()) {
+        if (bet.status === 'pending' && bet.autoCashout && bet.autoCashout < this.crashPoint) {
+          void this.settleCashout(bet, bet.autoCashout, true);
+        }
+      }
       void this.crash();
       return;
     }
@@ -202,8 +210,9 @@ export class GameEngine {
   }
 
   private async crash(): Promise<void> {
-    if (this.tickTimer) clearInterval(this.tickTimer);
+    if (this.phase !== 'running') return; // idempotent — may be triggered by a tick or a late cashout
     this.phase = 'crashed';
+    if (this.tickTimer) clearInterval(this.tickTimer);
 
     // Any still-pending bet loses.
     const losers: Promise<unknown>[] = [];
@@ -351,6 +360,14 @@ export class GameEngine {
     if (!bet || bet.status !== 'pending') throw new Error('No active bet to cash out');
 
     const multiplier = this.getMultiplierNow();
+    // SECURITY: the crash is only detected on 100ms ticks, but this multiplier is
+    // real-time. If it has already reached the crash point, the round has crashed —
+    // reject so a player can NEVER cash out at or above the crash point. Trigger the
+    // crash immediately so the window closes for everyone.
+    if (multiplier >= this.crashPoint) {
+      void this.crash();
+      throw new Error('Round has crashed');
+    }
     const balance = await this.settleCashout(bet, multiplier, false);
     return { payout: bet.payout, multiplier, balance };
   }

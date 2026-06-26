@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { User } from '../models/User';
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../utils/jwt';
 import { adjustBalance } from '../services/ledger';
+import { env } from '../config/env';
 import { badRequest, conflict, unauthorized, forbidden } from '../utils/errors';
 import { asyncHandler } from '../middleware/error';
 
@@ -50,16 +51,19 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
   user.refreshTokenId = tokenId;
   await user.save();
 
-  // Welcome bonus + referral bonus (sandbox economy)
-  const newBalance = await adjustBalance({
-    userId: user._id,
-    amount: 100,
-    type: 'bonus',
-    description: 'Welcome bonus',
-  });
+  // Welcome bonus + referral bonus (sandbox economy; set WELCOME_BONUS=0 to disable).
+  let newBalance = user.balance;
+  if (env.game.welcomeBonus > 0) {
+    newBalance = await adjustBalance({
+      userId: user._id,
+      amount: env.game.welcomeBonus,
+      type: 'bonus',
+      description: 'Welcome bonus',
+    });
+  }
   user.balance = newBalance; // reflect credited balance in the response
-  if (referrer) {
-    await adjustBalance({ userId: referrer._id, amount: 25, type: 'bonus', description: `Referral: ${username}` });
+  if (referrer && env.game.referralBonus > 0) {
+    await adjustBalance({ userId: referrer._id, amount: env.game.referralBonus, type: 'bonus', description: `Referral: ${username}` });
   }
 
   res.cookie(REFRESH_COOKIE, refreshToken, refreshCookieOpts);
