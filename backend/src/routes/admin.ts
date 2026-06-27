@@ -35,6 +35,8 @@ router.get('/audit', ctrl.auditLog);
 // ── runtime config, admin-action log, broadcast & moderation ──
 router.get('/config', ctrl.getConfig);
 router.patch('/config', ctrl.setConfig);
+router.get('/jackpot', ctrl.getJackpot);
+router.post('/jackpot', ctrl.setJackpot);
 router.get('/actions', ctrl.adminActions);
 router.post('/broadcast', ctrl.broadcast);
 router.delete('/chat/:id', ctrl.deleteChatMessage);

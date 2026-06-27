@@ -7,6 +7,7 @@ import { connectDB } from './config/db';
 import { connectRedis } from './config/redis';
 import { initGameEngine } from './services/gameEngine';
 import { loadConfig } from './services/runtimeConfig';
+import { loadJackpot } from './services/jackpotService';
 import { initAlerts } from './services/alertService';
 import { setupSocket } from './socket';
 import { User } from './models/User';
@@ -60,6 +61,7 @@ export async function bootstrap(): Promise<void> {
   await connectRedis();
   await ensureAdmin();
   await loadConfig();
+  await loadJackpot();
 
   const app = createApp();
   const server = http.createServer(app);

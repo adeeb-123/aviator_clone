@@ -11,6 +11,7 @@ import { adjustBalance } from '../services/ledger';
 import { getActiveSeed, rotateSeed } from '../services/seedManager';
 import { getGameEngine } from '../services/gameEngine';
 import { cfg, updateConfig } from '../services/runtimeConfig';
+import { getPot, setPot } from '../services/jackpotService';
 import { logAdmin } from '../services/adminAudit';
 import { env } from '../config/env';
 import { asyncHandler } from '../middleware/error';
@@ -163,6 +164,19 @@ export const setConfig = asyncHandler(async (req: Request, res: Response) => {
   const config = await updateConfig(req.body ?? {});
   logAdmin(req, 'config-update', '', req.body);
   res.json({ config });
+});
+
+// ── progressive jackpot ────────────────────────────────────
+export const getJackpot = asyncHandler(async (_req: Request, res: Response) => {
+  res.json({ pot: getPot(), config: { enabled: cfg().jackpotEnabled, rate: cfg().jackpotRate, seed: cfg().jackpotSeed, trigger: cfg().jackpotTrigger } });
+});
+
+export const setJackpot = asyncHandler(async (req: Request, res: Response) => {
+  const value = Number(req.body?.pot);
+  if (!Number.isFinite(value) || value < 0) throw badRequest('Invalid pot value');
+  const pot = await setPot(value);
+  logAdmin(req, 'jackpot-set', `₹${pot}`);
+  res.json({ pot });
 });
 
 // ── admin action audit log ─────────────────────────────────

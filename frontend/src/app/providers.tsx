@@ -29,6 +29,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
         serverSeedHash: snap.serverSeedHash,
         clientSeed: snap.clientSeed,
         players: snap.players ?? [],
+        jackpot: snap.jackpot ?? 0,
+        jackpotEnabled: snap.jackpotEnabled ?? false,
+        jackpotTrigger: snap.jackpotTrigger ?? 25,
+        sideBetsEnabled: snap.sideBetsEnabled ?? false,
+        sideBetMarkets: snap.sideBetMarkets ?? [],
       });
     });
 
@@ -42,6 +47,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
         clientSeed: p.clientSeed,
         bettingEndsAt: p.bettingEndsAt,
         players: [],
+        ...(typeof p.jackpot === 'number' ? { jackpot: p.jackpot } : {}),
+        jackpotEnabled: p.jackpotEnabled ?? false,
+        jackpotTrigger: p.jackpotTrigger ?? 25,
+        sideBetsEnabled: p.sideBetsEnabled ?? false,
+        sideBetMarkets: p.sideBetMarkets ?? [],
       });
     });
 
@@ -57,6 +67,12 @@ export function Providers({ children }: { children: React.ReactNode }) {
     socket.on(EVENTS.CHAT_MESSAGE, (m) => addChat(m));
     socket.on('chat:delete', (p: { id: string }) => removeChat(p.id));
     socket.on('chat:reaction', (p: { id: string; reactions: Record<string, number> }) => setReactions(p.id, p.reactions));
+    socket.on('jackpot:update', (p: { pot: number }) => gset({ jackpot: p.pot }));
+    socket.on('jackpot:won', (p: { username: string; amount: number; multiplier: number; pot: number }) => {
+      gset({ jackpot: p.pot });
+      sound.reward();
+      window.dispatchEvent(new CustomEvent('jackpot-won', { detail: p }));
+    });
 
     return () => {
       socket.off(EVENTS.STATE_INIT);
@@ -70,6 +86,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
       socket.off(EVENTS.CHAT_MESSAGE);
       socket.off('chat:delete');
       socket.off('chat:reaction');
+      socket.off('jackpot:update');
+      socket.off('jackpot:won');
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

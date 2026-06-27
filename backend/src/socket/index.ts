@@ -28,6 +28,7 @@ const EMOJI_OK = /^[\s\S]{1,280}$/;
 const RATE: Record<string, { max: number; windowMs: number }> = {
   'action:placeBet': { max: 12, windowMs: 5000 },
   'action:cashout': { max: 20, windowMs: 5000 },
+  'action:sideBet': { max: 12, windowMs: 5000 },
   'action:chat': { max: 5, windowMs: 10000 },
   'action:typing': { max: 15, windowMs: 10000 },
   'action:react': { max: 20, windowMs: 10000 },
@@ -106,6 +107,23 @@ export async function setupSocket(io: Server): Promise<void> {
         if (!socket.authUser) throw new Error('Login required');
         if (rateLimited(socket, EVENTS.CASHOUT)) throw new Error('Too many requests — slow down');
         const result = await engine.cashout(socket.authUser.id, data.slot === 2 ? 2 : 1, data.fraction ? Number(data.fraction) : 1);
+        ack?.({ ok: true, ...result });
+      } catch (err) {
+        ack?.({ ok: false, error: (err as Error).message });
+      }
+    });
+
+    socket.on('action:sideBet', async (data, ack) => {
+      try {
+        if (!socket.authUser) throw new Error('Login required');
+        if (socket.authUser.role === 'admin' && cfg().blockAdminBetting) throw new Error('Admins cannot place bets');
+        if (rateLimited(socket, 'action:sideBet')) throw new Error('Too many requests — slow down');
+        const result = await engine.placeSideBet({
+          userId: socket.authUser.id,
+          username: socket.authUser.username,
+          marketId: String(data?.marketId ?? ''),
+          amount: Number(data?.amount),
+        });
         ack?.({ ok: true, ...result });
       } catch (err) {
         ack?.({ ok: false, error: (err as Error).message });

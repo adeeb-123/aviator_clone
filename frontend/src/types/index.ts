@@ -164,6 +164,13 @@ export interface Tournament {
 
 export type GamePhase = 'idle' | 'betting' | 'running' | 'crashed';
 
+export interface SideBetMarket {
+  id: string;
+  threshold: number;
+  payout: number;
+  enabled: boolean;
+}
+
 export interface PublicBet {
   username: string;
   amount: number;

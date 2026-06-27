@@ -8,6 +8,8 @@ import { computeCrashPoint, generateClientSeed } from '../utils/provablyFair';
 import { getLeaderboard } from './leaderboard';
 import { alertLargeBet, alertBigWin } from './alertService';
 import { cfg } from './runtimeConfig';
+import { getPot, contribute, awardJackpot } from './jackpotService';
+import { SideBet } from '../models/SideBet';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 import { EVENTS, PublicBet } from '../socket/events';
@@ -25,6 +27,7 @@ interface LiveBet {
   cashoutMultiplier?: number;
   payout: number; // cumulative realised payout
   status: 'pending' | 'cashed-out' | 'lost';
+  jackpotWon?: boolean; // ensures the pot is won at most once per bet
 }
 
 /**
@@ -42,6 +45,7 @@ export class GameEngine {
   private clientSeed = '';
   private nonce = 0;
   private liveBets = new Map<string, LiveBet>(); // key: `${userId}:${slot}`
+  private sideBets: { id: string; userId: string; username: string; marketId: string; threshold: number; payout: number; amount: number }[] = [];
   private tickTimer?: NodeJS.Timeout;
   private phaseTimer?: NodeJS.Timeout;
   private running = false;
@@ -87,6 +91,11 @@ export class GameEngine {
       serverSeedHash: this.serverSeedHash,
       clientSeed: this.clientSeed,
       players: this.publicBets(),
+      jackpot: getPot(),
+      jackpotEnabled: cfg().jackpotEnabled,
+      jackpotTrigger: cfg().jackpotTrigger,
+      sideBetsEnabled: cfg().sideBetsEnabled,
+      sideBetMarkets: cfg().sideBetMarkets.filter((m) => m.enabled),
     };
   }
 
@@ -189,6 +198,7 @@ export class GameEngine {
       });
 
       this.liveBets.clear();
+      this.sideBets = [];
       this.phase = 'betting';
 
       const bettingWindowMs = cfg().bettingWindowMs;
@@ -199,6 +209,11 @@ export class GameEngine {
         clientSeed: this.clientSeed,
         nonce: this.nonce,
         bettingEndsAt,
+        jackpot: getPot(),
+        jackpotEnabled: cfg().jackpotEnabled,
+        jackpotTrigger: cfg().jackpotTrigger,
+        sideBetsEnabled: cfg().sideBetsEnabled,
+        sideBetMarkets: cfg().sideBetMarkets.filter((m) => m.enabled),
       });
       logger.debug({ roundId: this.roundId, crashPoint: this.crashPoint }, 'Betting open');
 
@@ -287,6 +302,7 @@ export class GameEngine {
       serverSeedHash: this.serverSeedHash,
     });
 
+    await this.resolveSideBets();
     await this.broadcastHistory();
     await this.broadcastLeaderboard();
 
@@ -392,7 +408,60 @@ export class GameEngine {
 
     alertLargeBet({ userId: params.userId, username: params.username, amount, roundId: this.roundId });
 
+    // Progressive jackpot grows from each wager.
+    void contribute(amount).then((pot) => this.io.emit('jackpot:update', { pot }));
+
     return { balance, bet: publicBet };
+  }
+
+  /** Place a side bet (prop bet) on the upcoming crash point. */
+  async placeSideBet(params: { userId: string; username: string; marketId: string; amount: number }): Promise<{ balance: number; pot: number }> {
+    if (this.phase !== 'betting') throw new Error('Side bets are closed for this round');
+    if (!cfg().sideBetsEnabled) throw new Error('Side bets are currently disabled');
+    const market = cfg().sideBetMarkets.find((m) => m.id === params.marketId && m.enabled);
+    if (!market) throw new Error('Unknown side-bet market');
+    const { amount } = params;
+    if (typeof amount !== 'number' || !Number.isFinite(amount)) throw new Error('Invalid amount');
+    if (amount < cfg().sideBetMin || amount > cfg().sideBetMax) {
+      throw new Error(`Side bet must be between ${cfg().sideBetMin} and ${cfg().sideBetMax}`);
+    }
+    if (this.sideBets.some((b) => b.userId === params.userId && b.marketId === params.marketId)) {
+      throw new Error('You already placed this side bet');
+    }
+
+    const balance = await adjustBalance({
+      userId: params.userId,
+      amount: -amount,
+      type: 'bet',
+      description: `Side bet ${market.id} on round ${this.roundId}`,
+      reference: String(this.roundId),
+    });
+
+    const doc = await SideBet.create({
+      roundId: this.roundId, userId: params.userId, username: params.username,
+      marketId: market.id, threshold: market.threshold, payout: market.payout, amount, status: 'pending',
+    });
+    this.sideBets.push({ id: String(doc._id), userId: params.userId, username: params.username, marketId: market.id, threshold: market.threshold, payout: market.payout, amount });
+
+    void contribute(amount).then((pot) => this.io.emit('jackpot:update', { pot }));
+    return { balance, pot: getPot() };
+  }
+
+  /** Resolve all side bets for the just-crashed round. */
+  private async resolveSideBets(): Promise<void> {
+    if (this.sideBets.length === 0) return;
+    const settled = this.sideBets;
+    this.sideBets = [];
+    for (const sb of settled) {
+      const won = this.crashPoint >= sb.threshold;
+      const winAmount = won ? Math.floor(sb.amount * sb.payout * 100) / 100 : 0;
+      await SideBet.updateOne({ _id: sb.id }, { status: won ? 'won' : 'lost', winAmount });
+      if (won) {
+        const balance = await adjustBalance({ userId: sb.userId, amount: winAmount, type: 'win', description: `Side bet ${sb.marketId} won round ${this.roundId}`, reference: String(this.roundId) });
+        this.io.to(`user:${sb.userId}`).emit(EVENTS.BALANCE_UPDATE, { balance });
+      }
+      this.io.to(`user:${sb.userId}`).emit('sidebet:result', { marketId: sb.marketId, won, winAmount, crashPoint: this.crashPoint });
+    }
   }
 
   /**
@@ -457,6 +526,17 @@ export class GameEngine {
 
     if (bet.status === 'cashed-out') {
       alertBigWin({ userId: bet.userId, username: bet.username, amount: bet.amount, multiplier, payout: bet.payout, roundId: this.roundId });
+    }
+
+    // 🎰 Progressive jackpot: cash out at/above the trigger multiplier to win the pot (once per bet).
+    if (!bet.jackpotWon && cfg().jackpotEnabled && multiplier >= cfg().jackpotTrigger) {
+      bet.jackpotWon = true;
+      const won = await awardJackpot(bet.username);
+      if (won > 0) {
+        const jpBalance = await adjustBalance({ userId: bet.userId, amount: won, type: 'win', description: `🎰 Jackpot @${multiplier}x round ${this.roundId}`, reference: String(this.roundId) });
+        this.io.to(`user:${bet.userId}`).emit(EVENTS.BALANCE_UPDATE, { balance: jpBalance });
+        this.io.emit('jackpot:won', { username: bet.username, amount: won, multiplier, pot: getPot() });
+      }
     }
     return { balance, partPayout };
   }

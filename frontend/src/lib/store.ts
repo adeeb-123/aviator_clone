@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { api, setAccessToken, getAccessToken } from './api';
 import { reauthSocket } from './socket';
-import type { User, GamePhase, PublicBet, RoundHistoryItem, ChatMessage, AdminAlert } from '@/types';
+import type { User, GamePhase, PublicBet, RoundHistoryItem, ChatMessage, AdminAlert, SideBetMarket } from '@/types';
 
 const alertKey = (a: AdminAlert) => a._id ?? a.id ?? '';
 
@@ -71,6 +71,11 @@ interface GameState {
   players: PublicBet[];
   history: RoundHistoryItem[];
   chat: ChatMessage[];
+  jackpot: number;
+  jackpotEnabled: boolean;
+  jackpotTrigger: number;
+  sideBetsEnabled: boolean;
+  sideBetMarkets: SideBetMarket[];
   set: (partial: Partial<GameState>) => void;
   addChat: (m: ChatMessage) => void;
   removeChat: (id: string) => void;
@@ -88,6 +93,11 @@ export const useGame = create<GameState>((set) => ({
   players: [],
   history: [],
   chat: [],
+  jackpot: 0,
+  jackpotEnabled: false,
+  jackpotTrigger: 25,
+  sideBetsEnabled: false,
+  sideBetMarkets: [],
   set: (partial) => set(partial),
   addChat: (m) => set((s) => ({ chat: [...s.chat.slice(-80), m] })),
   removeChat: (id) => set((s) => ({ chat: s.chat.filter((m) => m.id !== id) })),
