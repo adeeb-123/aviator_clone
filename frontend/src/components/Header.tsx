@@ -4,11 +4,13 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/store';
 import { sound } from '@/lib/sound';
+import { useT } from '@/lib/i18n';
 import AuthModal from './AuthModal';
 
 export default function Header() {
   const user = useAuth((s) => s.user);
   const logout = useAuth((s) => s.logout);
+  const { t, lang, setLang } = useT();
   const [authOpen, setAuthOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [muted, setMuted] = useState(false);
@@ -16,14 +18,15 @@ export default function Header() {
 
   const navLinks = (
     <>
-      <Link href="/" className="hover:text-white" onClick={() => setMenuOpen(false)}>Play</Link>
-      {user && <Link href="/rewards" className="hover:text-white" onClick={() => setMenuOpen(false)}>🎁 Rewards</Link>}
-      {user && <Link href="/tournaments" className="hover:text-white" onClick={() => setMenuOpen(false)}>🏆 Tournaments</Link>}
-      {user && <Link href="/stats" className="hover:text-white" onClick={() => setMenuOpen(false)}>My Stats</Link>}
-      {user && <Link href="/history" className="hover:text-white md:hidden" onClick={() => setMenuOpen(false)}>History</Link>}
-      {user && <Link href="/profile" className="hover:text-white md:hidden" onClick={() => setMenuOpen(false)}>Profile</Link>}
-      <Link href="/fairness" className="hover:text-white" onClick={() => setMenuOpen(false)}>Provably Fair</Link>
-      {user?.role === 'admin' && <Link href="/admin" className="text-gold hover:text-white" onClick={() => setMenuOpen(false)}>Admin</Link>}
+      <Link href="/" className="hover:text-white" onClick={() => setMenuOpen(false)}>{t('nav.play')}</Link>
+      {user && <Link href="/rewards" data-tour="rewards" className="hover:text-white" onClick={() => setMenuOpen(false)}>{t('nav.rewards')}</Link>}
+      {user && <Link href="/tournaments" className="hover:text-white" onClick={() => setMenuOpen(false)}>{t('nav.tournaments')}</Link>}
+      {user && <Link href="/stats" className="hover:text-white" onClick={() => setMenuOpen(false)}>{t('nav.stats')}</Link>}
+      {user && <Link href="/history" className="hover:text-white md:hidden" onClick={() => setMenuOpen(false)}>{t('nav.history')}</Link>}
+      {user && <Link href="/profile" className="hover:text-white md:hidden" onClick={() => setMenuOpen(false)}>{t('nav.profile')}</Link>}
+      <Link href="/fairness" className="hover:text-white" onClick={() => setMenuOpen(false)}>{t('nav.fairness')}</Link>
+      <Link href="/rtp" className="hover:text-white" onClick={() => setMenuOpen(false)}>{t('nav.rtp')}</Link>
+      {user?.role === 'admin' && <Link href="/admin" className="text-gold hover:text-white" onClick={() => setMenuOpen(false)}>{t('nav.admin')}</Link>}
     </>
   );
 
@@ -41,10 +44,16 @@ export default function Header() {
         <div className="flex items-center gap-2 sm:gap-3">
           {user && (
             <div className="glass px-2.5 py-1.5 text-sm">
-              <span className="hidden text-white/40 sm:inline">Balance </span>
+              <span className="hidden text-white/40 sm:inline">{t('common.balance')} </span>
               <span className="font-bold text-win">₹{user.balance.toFixed(2)}</span>
             </div>
           )}
+          <button onClick={() => { if (typeof window !== 'undefined') window.dispatchEvent(new Event('start-tour')); }} title="Take the tour" className="hidden rounded-lg bg-base-700 px-2.5 py-1.5 text-sm text-white/70 hover:text-white sm:block">
+            ?
+          </button>
+          <button onClick={() => setLang(lang === 'en' ? 'hi' : 'en')} title="Language" className="rounded-lg bg-base-700 px-2 py-1.5 text-xs font-bold text-white/70 hover:text-white">
+            {lang === 'en' ? 'EN' : 'हिं'}
+          </button>
           <button onClick={() => sound.toggle()} aria-label={muted ? 'Unmute' : 'Mute'} className="rounded-lg bg-base-700 px-2.5 py-1.5 text-sm text-white/70 hover:text-white">
             {muted ? '🔇' : '🔊'}
           </button>
@@ -53,12 +62,12 @@ export default function Header() {
           <div className="hidden items-center gap-3 md:flex">
             {user ? (
               <>
-                <Link href="/wallet" className="btn-primary text-sm">Wallet</Link>
+                <Link href="/wallet" className="btn-primary text-sm">{t('nav.wallet')}</Link>
                 <Link href="/profile" className="hidden text-sm text-white/70 hover:text-white lg:block">{user.avatar ?? '👤'} {user.username}</Link>
-                <button className="btn bg-base-700 text-sm text-white/70" onClick={() => void logout()}>Logout</button>
+                <button className="btn bg-base-700 text-sm text-white/70" onClick={() => void logout()}>{t('nav.logout')}</button>
               </>
             ) : (
-              <button className="btn-primary" onClick={() => setAuthOpen(true)}>Login / Register</button>
+              <button className="btn-primary" onClick={() => setAuthOpen(true)}>{t('nav.login')}</button>
             )}
           </div>
 

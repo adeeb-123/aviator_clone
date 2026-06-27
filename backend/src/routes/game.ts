@@ -8,6 +8,7 @@ const router = Router();
 router.get('/state', ctrl.getState);
 router.get('/history', ctrl.getHistory);
 router.get('/stats', ctrl.getStats);
+router.get('/rtp', ctrl.getRtp);
 router.get('/leaderboard', ctrl.leaderboard);
 router.get('/round/:roundId', ctrl.getRound);
 

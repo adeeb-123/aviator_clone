@@ -10,6 +10,7 @@ import Chat from '@/components/Chat';
 import Leaderboard from '@/components/Leaderboard';
 import LiveWins from '@/components/LiveWins';
 import DailyReward from '@/components/DailyReward';
+import OnboardingTour from '@/components/OnboardingTour';
 import { useGame } from '@/lib/store';
 
 export default function GamePage() {
@@ -32,6 +33,7 @@ export default function GamePage() {
           </div>
 
           <div
+            data-tour="game"
             className={`relative h-[280px] overflow-hidden rounded-2xl border border-white/5 sm:h-[360px] md:h-[460px] ${
               phase === 'crashed' ? 'ring-2 ring-loss/40' : ''
             }`}
@@ -41,7 +43,7 @@ export default function GamePage() {
             <MultiplierDisplay />
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div data-tour="bet" className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <BetPanel slot={1} />
             <BetPanel slot={2} />
           </div>
@@ -55,10 +57,12 @@ export default function GamePage() {
         </section>
 
         {/* right column: chat */}
-        <aside className="h-[420px] min-w-0 lg:sticky lg:top-20 lg:h-[calc(100vh-7rem)]">
+        <aside data-tour="chat" className="h-[420px] min-w-0 lg:sticky lg:top-20 lg:h-[calc(100vh-7rem)]">
           <Chat />
         </aside>
       </main>
+
+      <OnboardingTour />
 
       <footer className="border-t border-white/5 py-6 text-center text-xs text-white/30">
         Aviator Clone · Educational demo · Provably fair · Play responsibly

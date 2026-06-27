@@ -6,6 +6,7 @@ import { getSocket, EVENTS } from '@/lib/socket';
 import { useAuth, useGame } from '@/lib/store';
 import { sound } from '@/lib/sound';
 import { api } from '@/lib/api';
+import { useT } from '@/lib/i18n';
 import type { FavoriteStrategy } from '@/types';
 
 interface Props {
@@ -25,6 +26,7 @@ const STRATEGIES: { id: Strategy; label: string }[] = [
 const fib = (n: number): number => { let a = 1, b = 1; for (let i = 0; i < n; i++) { [a, b] = [b, a + b]; } return a; };
 
 export default function BetPanel({ slot }: Props) {
+  const { t } = useT();
   const user = useAuth((s) => s.user);
   const setBalance = useAuth((s) => s.setBalance);
   const phase = useGame((s) => s.phase);
@@ -156,7 +158,7 @@ export default function BetPanel({ slot }: Props) {
       <div className="mb-3 flex items-center justify-between">
         <div className="flex gap-1 rounded-lg bg-base-700/60 p-0.5 text-xs">
           {(['manual', 'auto'] as const).map((m) => (
-            <button key={m} disabled={autoRunning} onClick={() => setMode(m)} className={`rounded px-2.5 py-1 font-semibold capitalize ${mode === m ? 'bg-accent text-white' : 'text-white/50'}`}>{m}</button>
+            <button key={m} disabled={autoRunning} onClick={() => setMode(m)} className={`rounded px-2.5 py-1 font-semibold capitalize ${mode === m ? 'bg-accent text-white' : 'text-white/50'}`}>{t(`bet.${m}`)}</button>
           ))}
         </div>
         <span className="text-[11px] uppercase tracking-widest text-white/30">Bet {slot}</span>
@@ -175,7 +177,7 @@ export default function BetPanel({ slot }: Props) {
       {/* auto-cashout (manual: optional toggle; auto: required) */}
       {mode === 'manual' ? (
         <label className="mt-2 flex items-center gap-2 text-xs text-white/60">
-          <input type="checkbox" checked={autoEnabled} onChange={(e) => setAutoEnabled(e.target.checked)} /> Auto cashout
+          <input type="checkbox" checked={autoEnabled} onChange={(e) => setAutoEnabled(e.target.checked)} /> {t('bet.autocashout')}
           {autoEnabled && <input type="number" step="0.1" min={1.01} value={autoCashout} onChange={(e) => setAutoCashout(e.target.value)} className="input ml-auto max-w-[90px] py-1 text-right" />}
         </label>
       ) : (
@@ -188,30 +190,30 @@ export default function BetPanel({ slot }: Props) {
             <button disabled={lock} onClick={saveFav} className="btn bg-base-600 px-2 py-1 text-xs text-white/80">💾 Save</button>
           </div>
           <div className="flex items-center justify-between gap-2">
-            <span className="text-white/50">Cash out @</span>
+            <span className="text-white/50">{t('bet.cashAt')}</span>
             <input type="number" step="0.1" min={1.01} disabled={lock} value={autoCashout} onChange={(e) => setAutoCashout(e.target.value)} className="input max-w-[90px] py-1 text-right" />
           </div>
           <div className="flex items-center justify-between gap-2">
-            <span className="text-white/50">Rounds (∞ if empty)</span>
+            <span className="text-white/50">{t('bet.rounds')}</span>
             <input type="number" min={1} placeholder="∞" disabled={lock} value={rounds} onChange={(e) => setRounds(e.target.value)} className="input max-w-[90px] py-1 text-right" />
           </div>
           <div className="flex items-center justify-between gap-2">
-            <span className="text-white/50">Strategy</span>
+            <span className="text-white/50">{t('bet.strategy')}</span>
             <select disabled={lock} value={strategy} onChange={(e) => setStrategy(e.target.value as Strategy)} className="input max-w-[150px] py-1 text-xs">
               {STRATEGIES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
             </select>
           </div>
           <div className="flex items-center justify-between gap-2">
-            <span className="text-white/50">Stop if profit ≥ ₹</span>
+            <span className="text-white/50">{t('bet.stopProfit')}</span>
             <input type="number" min={0} placeholder="—" disabled={lock} value={stopProfit} onChange={(e) => setStopProfit(e.target.value)} className="input max-w-[90px] py-1 text-right" />
           </div>
           <div className="flex items-center justify-between gap-2">
-            <span className="text-white/50">Stop if loss ≥ ₹</span>
+            <span className="text-white/50">{t('bet.stopLoss')}</span>
             <input type="number" min={0} placeholder="—" disabled={lock} value={stopLoss} onChange={(e) => setStopLoss(e.target.value)} className="input max-w-[90px] py-1 text-right" />
           </div>
           {autoRunning && (
             <div className="flex items-center justify-between border-t border-white/10 pt-1.5">
-              <span className="text-white/50">Session P/L</span>
+              <span className="text-white/50">{t('bet.sessionPL')}</span>
               <span className={`font-bold ${sessionPL >= 0 ? 'text-win' : 'text-loss'}`}>{sessionPL >= 0 ? '+' : ''}₹{sessionPL.toFixed(2)}</span>
             </div>
           )}
@@ -222,24 +224,24 @@ export default function BetPanel({ slot }: Props) {
       <div className="mt-3">
         {mode === 'auto' ? (
           autoRunning ? (
-            <button className="btn-loss w-full text-lg" onClick={stopAuto}>■ Stop auto-bet</button>
+            <button className="btn-loss w-full text-lg" onClick={stopAuto}>{t('bet.stop')}</button>
           ) : (
-            <button className="btn-primary w-full text-lg" onClick={startAuto}>▶ Start auto-bet</button>
+            <button className="btn-primary w-full text-lg" onClick={startAuto}>{t('bet.start')}</button>
           )
         ) : canCashout ? (
           <div className="flex gap-2">
-            <motion.button className="btn-win flex-1 text-lg" onClick={() => cashout(1)} animate={{ scale: [1, 1.02, 1] }} transition={{ repeat: Infinity, duration: 0.5 }}>Cash Out {potential}</motion.button>
+            <motion.button className="btn-win flex-1 text-lg" onClick={() => cashout(1)} animate={{ scale: [1, 1.02, 1] }} transition={{ repeat: Infinity, duration: 0.5 }}>{t('bet.cashout')} {potential}</motion.button>
             <button className="btn bg-base-600 px-3 text-sm font-bold text-white" title="Cash out half, let the rest ride" onClick={() => cashout(0.5)}>½</button>
           </div>
         ) : cashedAt ? (
-          <div className="btn-win w-full text-center text-lg">Cashed @ {cashedAt.toFixed(2)}x 🎉</div>
+          <div className="btn-win w-full text-center text-lg">{t('bet.cashed')} @ {cashedAt.toFixed(2)}x 🎉</div>
         ) : placed ? (
-          <div className="btn w-full bg-base-600 text-center text-white/70">Waiting for round…</div>
+          <div className="btn w-full bg-base-600 text-center text-white/70">{t('bet.waiting')}</div>
         ) : (
           <div className="space-y-2">
-            <button className="btn-primary w-full text-lg" onClick={() => place()} disabled={!canBet}>Bet ₹{amount.toFixed(2)}</button>
+            <button className="btn-primary w-full text-lg" onClick={() => place()} disabled={!canBet}>{t('bet.bet')} ₹{amount.toFixed(2)}</button>
             {lastBet !== null && lastBet !== amount && (
-              <button className="btn w-full bg-base-700 text-sm text-white/80" onClick={() => place(lastBet)} disabled={!canBet}>🔁 Rebet ₹{lastBet.toFixed(2)}</button>
+              <button className="btn w-full bg-base-700 text-sm text-white/80" onClick={() => place(lastBet)} disabled={!canBet}>🔁 {t('bet.rebet')} ₹{lastBet.toFixed(2)}</button>
             )}
           </div>
         )}

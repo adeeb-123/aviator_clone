@@ -3,11 +3,13 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { getSocket, EVENTS } from '@/lib/socket';
+import { useT } from '@/lib/i18n';
 
 interface Win { id: number; username: string; multiplier: number; payout: number; }
 let counter = 0;
 
 export default function LiveWins() {
+  const { t } = useT();
   const [wins, setWins] = useState<Win[]>([]);
 
   useEffect(() => {
@@ -25,7 +27,7 @@ export default function LiveWins() {
 
   return (
     <div className="glass flex items-center gap-3 overflow-hidden p-2.5">
-      <span className="shrink-0 text-xs font-bold uppercase tracking-wider text-win">🏆 Live wins</span>
+      <span className="shrink-0 text-xs font-bold uppercase tracking-wider text-win">{t('wins.live')}</span>
       <div className="flex gap-2 overflow-x-auto">
         {wins.map((w) => (
           <div key={w.id} className="flex shrink-0 items-center gap-1.5 rounded-full bg-base-700/60 px-3 py-1 text-xs">

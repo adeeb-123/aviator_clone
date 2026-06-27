@@ -3,8 +3,10 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import { useGame } from '@/lib/store';
+import { useT } from '@/lib/i18n';
 
 export default function MultiplierDisplay() {
+  const { t } = useT();
   const phase = useGame((s) => s.phase);
   const multiplier = useGame((s) => s.multiplier);
   const crashPoint = useGame((s) => s.crashPoint);
@@ -32,9 +34,9 @@ export default function MultiplierDisplay() {
             exit={{ opacity: 0 }}
             className="text-center"
           >
-            <div className="text-xs uppercase tracking-widest text-white/50 sm:text-sm">Next round in</div>
+            <div className="text-xs uppercase tracking-widest text-white/50 sm:text-sm">{t('game.nextRound')}</div>
             <div className="text-5xl font-bold text-accent-glow sm:text-6xl">{countdown.toFixed(1)}s</div>
-            <div className="mt-2 text-white/40">Place your bets</div>
+            <div className="mt-2 text-white/40">{t('game.placeBets')}</div>
           </motion.div>
         )}
 
@@ -64,7 +66,7 @@ export default function MultiplierDisplay() {
             animate={{ scale: 1, opacity: 1 }}
             className="text-center"
           >
-            <div className="text-xl font-semibold uppercase tracking-widest text-loss sm:text-2xl">Flew away!</div>
+            <div className="text-xl font-semibold uppercase tracking-widest text-loss sm:text-2xl">{t('game.flewAway')}</div>
             <div className="text-6xl font-black text-loss sm:text-7xl" style={{ textShadow: '0 0 40px #ef4444' }}>
               {(crashPoint ?? multiplier).toFixed(2)}x
             </div>

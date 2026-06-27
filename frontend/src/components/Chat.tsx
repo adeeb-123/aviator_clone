@@ -5,11 +5,13 @@ import Link from 'next/link';
 import { getSocket, EVENTS } from '@/lib/socket';
 import { useAuth, useGame } from '@/lib/store';
 import { api } from '@/lib/api';
+import { useT } from '@/lib/i18n';
 
 const EMOJIS = ['🚀', '✈️', '🔥', '💰', '😎', '😱', '🎉', '💎', '🤑', '😭'];
 const REACTIONS = ['👍', '❤️', '😂', '🔥', '😮', '💰'];
 
 export default function Chat() {
+  const { t } = useT();
   const user = useAuth((s) => s.user);
   const setBalance = useAuth((s) => s.setBalance);
   const messages = useGame((s) => s.chat);
@@ -46,11 +48,11 @@ export default function Chat() {
   return (
     <div className="glass flex h-full flex-col p-4">
       <div className="mb-2 flex items-center justify-between">
-        <h3 className="font-semibold">Live Chat</h3>
+        <h3 className="font-semibold">{t('chat.title')}</h3>
         {user && <button onClick={rain} title="Drop credits on recent chatters" className="rounded-lg bg-base-700 px-2 py-1 text-xs text-white/70 hover:text-white">🌧️ Rain</button>}
       </div>
       <div ref={scrollRef} className="flex-1 space-y-2 overflow-y-auto pr-1">
-        {messages.length === 0 && <p className="text-sm text-white/30">Say hi to the table 👋</p>}
+        {messages.length === 0 && <p className="text-sm text-white/30">{t('chat.sayHi')}</p>}
         {messages.map((m) => {
           const system = m.id.startsWith('rain-');
           const reactions = m.reactions ? Object.entries(m.reactions).filter(([, n]) => n > 0) : [];
@@ -104,14 +106,14 @@ export default function Chat() {
       <div className="mt-1 flex gap-2">
         <input
           className="input"
-          placeholder={user ? 'Message…' : 'Log in to chat'}
+          placeholder={user ? t('chat.message') : t('chat.loginToChat')}
           disabled={!user}
           value={text}
           maxLength={280}
           onChange={(e) => { setText(e.target.value); getSocket().emit(EVENTS.TYPING); }}
           onKeyDown={(e) => e.key === 'Enter' && send()}
         />
-        <button className="btn-primary" onClick={send} disabled={!user}>Send</button>
+        <button className="btn-primary" onClick={send} disabled={!user}>{t('chat.send')}</button>
       </div>
     </div>
   );

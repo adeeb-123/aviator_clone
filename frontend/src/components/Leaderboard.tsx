@@ -4,11 +4,13 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { getSocket, EVENTS } from '@/lib/socket';
+import { useT } from '@/lib/i18n';
 import type { LeaderboardEntry } from '@/types';
 
 type Range = 'today' | 'week' | 'all';
 
 export default function Leaderboard() {
+  const { t } = useT();
   const [range, setRange] = useState<Range>('today');
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
 
@@ -37,7 +39,7 @@ export default function Leaderboard() {
   return (
     <div className="glass p-4">
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="font-semibold">🏆 Top Winners</h3>
+        <h3 className="font-semibold">{t('lb.title')}</h3>
         <div className="flex gap-1 text-xs">
           {(['today', 'week', 'all'] as Range[]).map((r) => (
             <button
@@ -45,13 +47,13 @@ export default function Leaderboard() {
               onClick={() => setRange(r)}
               className={`rounded px-2 py-1 capitalize ${range === r ? 'bg-accent text-white' : 'text-white/50'}`}
             >
-              {r}
+              {t(`lb.${r}`)}
             </button>
           ))}
         </div>
       </div>
       <div className="space-y-1">
-        {entries.length === 0 && <p className="text-sm text-white/30">No winners yet.</p>}
+        {entries.length === 0 && <p className="text-sm text-white/30">{t('lb.none')}</p>}
         {entries.map((e, i) => (
           <div key={e.userId} className="flex items-center justify-between rounded-lg bg-base-700/40 px-2 py-1.5 text-sm">
             <span className="w-6 text-center">{medal(i)}</span>
