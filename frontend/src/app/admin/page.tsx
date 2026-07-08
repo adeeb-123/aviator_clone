@@ -12,12 +12,13 @@ import Audit from '@/components/admin/Audit';
 import Promos from '@/components/admin/Promos';
 import Tournaments from '@/components/admin/Tournaments';
 import Crypto from '@/components/admin/Crypto';
+import Treasury from '@/components/admin/Treasury';
 import { useAuth, useGame, useAlerts, useGameControl } from '@/lib/store';
 import { api } from '@/lib/api';
 import { getSocket } from '@/lib/socket';
 import type { AdminAlert } from '@/types';
 
-type Tab = 'overview' | 'players' | 'rounds' | 'alerts' | 'controls' | 'settings' | 'audit' | 'promos' | 'tournaments' | 'crypto';
+type Tab = 'overview' | 'treasury' | 'players' | 'rounds' | 'alerts' | 'controls' | 'settings' | 'audit' | 'promos' | 'tournaments' | 'crypto';
 
 const sevBg = (s?: string) => (s === 'critical' ? 'bg-loss' : s === 'warning' ? 'bg-gold text-base-900' : 'bg-accent');
 
@@ -62,6 +63,7 @@ export default function AdminPage() {
 
   const tabs: { id: Tab; label: string; icon: string; badge?: number }[] = [
     { id: 'overview', label: 'Overview & Analytics', icon: '📊' },
+    { id: 'treasury', label: 'Treasury / P&L', icon: '🏦' },
     { id: 'players', label: 'Players', icon: '👥' },
     { id: 'rounds', label: 'Round Audit', icon: '🎲' },
     { id: 'alerts', label: 'Alerts', icon: '🔔', badge: unread },
@@ -124,6 +126,7 @@ export default function AdminPage() {
         </div>
 
         {tab === 'overview' && <Overview />}
+        {tab === 'treasury' && <Treasury />}
         {tab === 'players' && <Players />}
         {tab === 'rounds' && <Rounds />}
         {tab === 'alerts' && <Alerts />}

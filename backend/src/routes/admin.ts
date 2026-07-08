@@ -13,6 +13,7 @@ router.use(authenticate, requireAdmin);
 
 router.get('/dashboard', ctrl.dashboard);
 router.get('/revenue', ctrl.revenueSeries);
+router.get('/treasury', ctrl.treasury);
 
 // ── advanced analytics ──
 router.get('/analytics/overview', analytics.overview);

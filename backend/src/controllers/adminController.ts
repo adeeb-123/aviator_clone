@@ -7,6 +7,7 @@ import { ServerSeed } from '../models/ServerSeed';
 import { Chat } from '../models/Chat';
 import { AdminAudit } from '../models/AdminAudit';
 import { PromoCode } from '../models/PromoCode';
+import { CryptoTransaction } from '../models/CryptoTransaction';
 import { adjustBalance } from '../services/ledger';
 import { getActiveSeed, rotateSeed } from '../services/seedManager';
 import { getGameEngine } from '../services/gameEngine';
@@ -65,6 +66,56 @@ export const revenueSeries = asyncHandler(async (_req: Request, res: Response) =
     },
   ]);
   res.json({ series });
+});
+
+/** GET /admin/treasury — house economics: cash position, liabilities, equity, GGR/NGR. */
+export const treasury = asyncHandler(async (_req: Request, res: Response) => {
+  const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+  const since = new Date(Date.now() - 30 * 864e5);
+
+  const [byTypeRaw, balAgg, roundsAgg, pendingAgg, dailyRaw, topBalances] = await Promise.all([
+    Transaction.aggregate([{ $group: { _id: '$type', total: { $sum: '$amount' }, count: { $sum: 1 } } }]),
+    User.aggregate([{ $group: { _id: null, total: { $sum: '$balance' }, players: { $sum: 1 } } }]),
+    Round.aggregate([{ $match: { status: 'crashed' } }, { $group: { _id: null, wagered: { $sum: '$totalWagered' }, payout: { $sum: '$totalPayout' }, rounds: { $sum: 1 } } }]),
+    CryptoTransaction.aggregate([{ $match: { type: 'withdrawal', status: 'pending' } }, { $group: { _id: null, total: { $sum: '$inrAmount' }, count: { $sum: 1 } } }]),
+    Transaction.aggregate([
+      { $match: { type: { $in: ['deposit', 'withdraw'] }, createdAt: { $gte: since } } },
+      { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }, deposits: { $sum: { $cond: [{ $eq: ['$type', 'deposit'] }, '$amount', 0] } }, withdrawals: { $sum: { $cond: [{ $eq: ['$type', 'withdraw'] }, { $abs: '$amount' }, 0] } } } },
+      { $sort: { _id: 1 } },
+    ]),
+    User.find().sort({ balance: -1 }).limit(8).select('username balance').lean(),
+  ]);
+
+  const byType: Record<string, { total: number; count: number }> = {};
+  for (const t of byTypeRaw) byType[t._id] = { total: r2(t.total), count: t.count };
+  const sum = (k: string, abs = false) => { const v = byType[k]?.total ?? 0; return r2(abs ? Math.abs(v) : v); };
+
+  const deposits = sum('deposit');
+  const withdrawals = sum('withdraw', true);
+  const bonuses = sum('bonus');
+  const adminAdjust = sum('admin-adjust');
+  const refunds = sum('refund');
+  const netCashIn = r2(deposits - withdrawals);
+  const playerBalances = r2(balAgg[0]?.total ?? 0);
+  const players = balAgg[0]?.players ?? 0;
+  const pendingWithdrawals = r2(pendingAgg[0]?.total ?? 0);
+  const equity = r2(netCashIn - playerBalances);
+
+  const g = roundsAgg[0] ?? { wagered: 0, payout: 0, rounds: 0 };
+  const wagered = r2(g.wagered); const payout = r2(g.payout);
+  const ggr = r2(wagered - payout);
+  const rtp = wagered > 0 ? r2((payout / wagered) * 100) : 0;
+  const ngr = r2(ggr - bonuses);
+
+  res.json({
+    cash: { deposits, withdrawals, netCashIn, depositCount: byType.deposit?.count ?? 0, withdrawCount: byType.withdraw?.count ?? 0 },
+    liabilities: { playerBalances, players, pendingWithdrawals, pendingCount: pendingAgg[0]?.count ?? 0 },
+    equity,
+    gaming: { wagered, payout, ggr, rtp, rounds: g.rounds, ngr, bonuses, adminAdjust, refunds },
+    byType: byTypeRaw.map((t) => ({ type: t._id, total: r2(t.total), count: t.count })).sort((a, b) => Math.abs(b.total) - Math.abs(a.total)),
+    daily: dailyRaw.map((d) => ({ date: d._id.slice(5), deposits: r2(d.deposits), withdrawals: r2(d.withdrawals) })),
+    topBalances: topBalances.map((u) => ({ username: u.username, balance: r2(u.balance) })),
+  });
 });
 
 export const listUsers = asyncHandler(async (req: Request, res: Response) => {
