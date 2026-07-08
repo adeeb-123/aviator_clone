@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Header from '@/components/Header';
+import CryptoWallet from '@/components/CryptoWallet';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/store';
 
@@ -99,6 +100,8 @@ export default function WalletPage() {
             </p>
           )}
         </div>
+
+        <CryptoWallet />
 
         <div className="glass p-6">
           <h2 className="mb-3 font-semibold">Transactions</h2>

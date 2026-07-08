@@ -16,6 +16,14 @@ export interface SideBetMarket {
   enabled: boolean;
 }
 
+/** A supported crypto coin for deposits/withdrawals (demo — no real chain). */
+export interface CryptoCoin {
+  symbol: string; // BTC, ETH, USDT
+  name: string;
+  rate: number; // INR per 1 unit of the coin
+  enabled: boolean;
+}
+
 export interface RuntimeConfig {
   minBet: number;
   maxBet: number;
@@ -34,6 +42,9 @@ export interface RuntimeConfig {
   jackpotRate: number; // fraction of each main wager added to the pot
   jackpotSeed: number; // pot resets to this after a win
   jackpotTrigger: number; // cash out at >= this multiplier to win the pot
+  // ── crypto wallet (demo) ──
+  cryptoEnabled: boolean;
+  cryptoCoins: CryptoCoin[];
 }
 
 const DEFAULT_BANNED = ['fuck', 'shit', 'bitch', 'asshole', 'bastard', 'cunt', 'dick', 'scam', 'rigged'];
@@ -45,6 +56,13 @@ const DEFAULT_MARKETS: SideBetMarket[] = [
   { id: 'over3', threshold: 3, payout: 2.85, enabled: true },
   { id: 'over5', threshold: 5, payout: 4.7, enabled: true },
   { id: 'over10', threshold: 10, payout: 9.2, enabled: true },
+];
+
+// Rate = INR per 1 coin (demo values; admin-tunable).
+const DEFAULT_COINS: CryptoCoin[] = [
+  { symbol: 'BTC', name: 'Bitcoin', rate: 5_000_000, enabled: true },
+  { symbol: 'ETH', name: 'Ethereum', rate: 300_000, enabled: true },
+  { symbol: 'USDT', name: 'Tether', rate: 85, enabled: true },
 ];
 
 let cache: RuntimeConfig = {
@@ -63,6 +81,8 @@ let cache: RuntimeConfig = {
   jackpotRate: 0.01,
   jackpotSeed: 500,
   jackpotTrigger: 25,
+  cryptoEnabled: true,
+  cryptoCoins: DEFAULT_COINS,
 };
 
 export function cfg(): RuntimeConfig {
@@ -109,6 +129,14 @@ export async function updateConfig(patch: Partial<RuntimeConfig>): Promise<Runti
   if (patch.jackpotRate !== undefined) next.jackpotRate = clampNum(patch.jackpotRate, 0, 0.1, cache.jackpotRate);
   if (patch.jackpotSeed !== undefined) next.jackpotSeed = clampNum(patch.jackpotSeed, 0, 1_000_000, cache.jackpotSeed);
   if (patch.jackpotTrigger !== undefined) next.jackpotTrigger = clampNum(patch.jackpotTrigger, 2, 10_000, cache.jackpotTrigger);
+
+  if (patch.cryptoEnabled !== undefined) next.cryptoEnabled = Boolean(patch.cryptoEnabled);
+  if (Array.isArray(patch.cryptoCoins)) {
+    next.cryptoCoins = patch.cryptoCoins
+      .filter((c) => c && typeof c.symbol === 'string')
+      .map((c) => ({ symbol: String(c.symbol).toUpperCase().slice(0, 8), name: String(c.name ?? c.symbol).slice(0, 30), rate: clampNum(c.rate, 0.0001, 1e12, 1), enabled: Boolean(c.enabled) }))
+      .slice(0, 20);
+  }
 
   cache = next;
   await AppConfig.updateOne({ key: 'game' }, { $set: { value: cache } }, { upsert: true });

@@ -3,6 +3,7 @@ import * as ctrl from '../controllers/adminController';
 import * as analytics from '../controllers/analyticsController';
 import * as alerts from '../controllers/alertController';
 import * as tournaments from '../controllers/tournamentController';
+import * as crypto from '../controllers/cryptoController';
 import { authenticate, requireAdmin } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { adminAdjustSchema, adminCrashSchema } from '../validators/schemas';
@@ -51,6 +52,11 @@ router.get('/tournaments', tournaments.adminList);
 router.post('/tournaments', tournaments.adminCreate);
 router.post('/tournaments/:id/end', tournaments.adminEnd);
 router.delete('/tournaments/:id', tournaments.adminDelete);
+
+// ── crypto withdrawal approval queue ──
+router.get('/crypto/withdrawals', crypto.adminListWithdrawals);
+router.post('/crypto/withdrawals/:id/approve', crypto.adminApprove);
+router.post('/crypto/withdrawals/:id/reject', crypto.adminReject);
 
 router.get('/game/status', ctrl.gameStatus);
 router.post('/game/pause', ctrl.pauseGame);

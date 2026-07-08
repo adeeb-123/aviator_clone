@@ -171,6 +171,29 @@ export interface SideBetMarket {
   enabled: boolean;
 }
 
+export interface CryptoCoin {
+  symbol: string;
+  name: string;
+  rate: number; // INR per coin
+  address?: string; // caller's deposit address
+  enabled?: boolean;
+}
+
+export interface CryptoTx {
+  _id: string;
+  username?: string;
+  type: 'deposit' | 'withdrawal';
+  coin: string;
+  cryptoAmount: number;
+  inrAmount: number;
+  rate: number;
+  address: string;
+  txHash?: string;
+  status: 'pending' | 'confirmed' | 'completed' | 'rejected';
+  note?: string;
+  createdAt: string;
+}
+
 export interface PublicBet {
   username: string;
   amount: number;

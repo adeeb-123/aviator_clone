@@ -11,12 +11,13 @@ import Settings from '@/components/admin/Settings';
 import Audit from '@/components/admin/Audit';
 import Promos from '@/components/admin/Promos';
 import Tournaments from '@/components/admin/Tournaments';
+import Crypto from '@/components/admin/Crypto';
 import { useAuth, useGame, useAlerts, useGameControl } from '@/lib/store';
 import { api } from '@/lib/api';
 import { getSocket } from '@/lib/socket';
 import type { AdminAlert } from '@/types';
 
-type Tab = 'overview' | 'players' | 'rounds' | 'alerts' | 'controls' | 'settings' | 'audit' | 'promos' | 'tournaments';
+type Tab = 'overview' | 'players' | 'rounds' | 'alerts' | 'controls' | 'settings' | 'audit' | 'promos' | 'tournaments' | 'crypto';
 
 const sevBg = (s?: string) => (s === 'critical' ? 'bg-loss' : s === 'warning' ? 'bg-gold text-base-900' : 'bg-accent');
 
@@ -68,6 +69,7 @@ export default function AdminPage() {
     { id: 'settings', label: 'Settings & Broadcast', icon: '⚙️' },
     { id: 'promos', label: 'Promo Codes', icon: '🎟️' },
     { id: 'tournaments', label: 'Tournaments', icon: '🏆' },
+    { id: 'crypto', label: 'Crypto', icon: '🪙', badge: undefined },
     { id: 'audit', label: 'Audit Log', icon: '📋' },
   ];
 
@@ -129,6 +131,7 @@ export default function AdminPage() {
         {tab === 'settings' && <Settings />}
         {tab === 'promos' && <Promos />}
         {tab === 'tournaments' && <Tournaments />}
+        {tab === 'crypto' && <Crypto />}
         {tab === 'audit' && <Audit />}
       </main>
     </div>
