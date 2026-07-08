@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/store';
 import { sound } from '@/lib/sound';
 import { useT } from '@/lib/i18n';
+import { inr } from '@/lib/format';
 import AuthModal from './AuthModal';
 
 export default function Header() {
@@ -45,7 +46,7 @@ export default function Header() {
           {user && (
             <div className="glass px-2.5 py-1.5 text-sm">
               <span className="hidden text-white/40 sm:inline">{t('common.balance')} </span>
-              <span className="font-bold text-win">₹{user.balance.toFixed(2)}</span>
+              <span className="font-bold text-win">{inr(user.balance)}</span>
             </div>
           )}
           <button onClick={() => { if (typeof window !== 'undefined') window.dispatchEvent(new Event('start-tour')); }} title="Take the tour" className="hidden rounded-lg bg-base-700 px-2.5 py-1.5 text-sm text-white/70 hover:text-white sm:block">

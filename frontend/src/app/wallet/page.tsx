@@ -116,7 +116,7 @@ export default function WalletPage() {
           <div className="relative flex flex-wrap items-end justify-between gap-4">
             <div>
               <div className="text-xs uppercase tracking-widest text-white/50">Available balance</div>
-              <div className="mt-1 text-4xl font-black tabular-nums text-win sm:text-5xl">₹{(user?.balance ?? 0).toFixed(2)}</div>
+              <div className="mt-1 text-4xl font-black tabular-nums text-win sm:text-5xl">{inr(user?.balance ?? 0)}</div>
             </div>
             {user && (
               <button onClick={copyRef} className="rounded-lg border border-white/10 bg-base-900/50 px-3 py-2 text-left text-xs transition hover:border-accent/50">
@@ -140,7 +140,7 @@ export default function WalletPage() {
             <h2 className="flex items-center gap-2 font-semibold">💳 Add funds <span className="text-xs font-normal text-white/40">via card</span></h2>
             <div className="mt-3 grid grid-cols-4 gap-1.5">
               {QUICK.map((q) => (
-                <button key={q} onClick={() => setDepAmt(q)} className={`rounded-lg py-1.5 text-xs font-semibold ${depAmt === q ? 'bg-accent text-white' : 'bg-base-700 text-white/70 hover:text-white'}`}>₹{q}</button>
+                <button key={q} onClick={() => setDepAmt(q)} className={`rounded-lg py-1.5 text-xs font-semibold ${depAmt === q ? 'bg-accent text-white' : 'bg-base-700 text-white/70 hover:text-white'}`}>{inr(q, 0)}</button>
               ))}
             </div>
             <div className="mt-2 flex items-center gap-2">

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { getSocket, EVENTS } from '@/lib/socket';
 import { useT } from '@/lib/i18n';
+import { inr } from '@/lib/format';
 
 interface Win { id: number; username: string; multiplier: number; payout: number; }
 let counter = 0;
@@ -33,7 +34,7 @@ export default function LiveWins() {
           <div key={w.id} className="flex shrink-0 items-center gap-1.5 rounded-full bg-base-700/60 px-3 py-1 text-xs">
             <Link href={`/u/${w.username}`} className="max-w-[80px] truncate text-white/70 hover:text-accent-glow">{w.username}</Link>
             <span className={`font-bold ${tint(w.multiplier)}`}>{w.multiplier?.toFixed(2)}x</span>
-            <span className="font-bold text-win">+₹{w.payout.toFixed(0)}</span>
+            <span className="font-bold text-win">+{inr(w.payout, 0)}</span>
           </div>
         ))}
       </div>

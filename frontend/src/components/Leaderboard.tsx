@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { api } from '@/lib/api';
 import { getSocket, EVENTS } from '@/lib/socket';
 import { useT } from '@/lib/i18n';
+import { inr } from '@/lib/format';
 import type { LeaderboardEntry } from '@/types';
 
 type Range = 'today' | 'week' | 'all';
@@ -59,7 +60,7 @@ export default function Leaderboard() {
             <span className="w-6 text-center">{medal(i)}</span>
             <Link href={`/u/${e.username}`} className="flex-1 truncate px-2 text-white/80 hover:text-accent-glow hover:underline">{e.username}</Link>
             <span className="text-xs text-white/40">{e.bestMultiplier?.toFixed(2)}x</span>
-            <span className="ml-2 font-bold text-win">+₹{e.totalPayout.toFixed(0)}</span>
+            <span className="ml-2 font-bold text-win">+{inr(e.totalPayout, 0)}</span>
           </div>
         ))}
       </div>

@@ -7,6 +7,7 @@ import { useAuth, useGame } from '@/lib/store';
 import { sound } from '@/lib/sound';
 import { api } from '@/lib/api';
 import { useT } from '@/lib/i18n';
+import { inr } from '@/lib/format';
 import type { FavoriteStrategy } from '@/types';
 
 interface Props {
@@ -143,14 +144,14 @@ export default function BetPanel({ slot }: Props) {
       if (res.ok) {
         if (res.balance !== undefined) setBalance(res.balance); sound.cashout();
         if (res.fullyCashed) { setCashedAt(res.multiplier ?? null); setPlaced(false); }
-        else setMsg(`Banked ₹${(res.payout ?? 0).toFixed(2)} · ₹${(res.remaining ?? 0).toFixed(2)} still riding`);
+        else setMsg(`Banked ${inr(res.payout ?? 0)} · ${inr(res.remaining ?? 0)} still riding`);
       } else setMsg(res.error ?? 'Cashout failed');
     });
   };
 
   const canBet = phase === 'betting' && !placed;
   const canCashout = phase === 'running' && placed && cashedAt === null;
-  const potential = '₹' + (amount * multiplier).toFixed(2);
+  const potential = inr(amount * multiplier);
   const lock = autoRunning; // lock manual inputs while auto runs
 
   return (
@@ -214,7 +215,7 @@ export default function BetPanel({ slot }: Props) {
           {autoRunning && (
             <div className="flex items-center justify-between border-t border-white/10 pt-1.5">
               <span className="text-white/50">{t('bet.sessionPL')}</span>
-              <span className={`font-bold ${sessionPL >= 0 ? 'text-win' : 'text-loss'}`}>{sessionPL >= 0 ? '+' : ''}₹{sessionPL.toFixed(2)}</span>
+              <span className={`font-bold ${sessionPL >= 0 ? 'text-win' : 'text-loss'}`}>{sessionPL >= 0 ? '+' : '−'}{inr(Math.abs(sessionPL))}</span>
             </div>
           )}
         </div>
@@ -239,9 +240,9 @@ export default function BetPanel({ slot }: Props) {
           <div className="btn w-full bg-base-600 text-center text-white/70">{t('bet.waiting')}</div>
         ) : (
           <div className="space-y-2">
-            <button className="btn-primary w-full text-lg" onClick={() => place()} disabled={!canBet}>{t('bet.bet')} ₹{amount.toFixed(2)}</button>
+            <button className="btn-primary w-full text-lg" onClick={() => place()} disabled={!canBet}>{t('bet.bet')} {inr(amount)}</button>
             {lastBet !== null && lastBet !== amount && (
-              <button className="btn w-full bg-base-700 text-sm text-white/80" onClick={() => place(lastBet)} disabled={!canBet}>🔁 {t('bet.rebet')} ₹{lastBet.toFixed(2)}</button>
+              <button className="btn w-full bg-base-700 text-sm text-white/80" onClick={() => place(lastBet)} disabled={!canBet}>🔁 {t('bet.rebet')} {inr(lastBet)}</button>
             )}
           </div>
         )}

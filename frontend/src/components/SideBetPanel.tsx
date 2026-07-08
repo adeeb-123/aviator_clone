@@ -46,7 +46,7 @@ export default function SideBetPanel() {
         <h3 className="font-semibold">🎯 Side Bets <span className="text-xs font-normal text-white/40">— will the crash beat the target?</span></h3>
         <div className="flex items-center gap-2 text-sm">
           <button onClick={() => setAmount((a) => Math.max(1, a - 10))} className="btn bg-base-600 px-2.5 py-1 text-white">−</button>
-          <span className="min-w-[60px] text-center font-bold tabular-nums">₹{amount}</span>
+          <span className="min-w-[60px] text-center font-bold tabular-nums">{inr(amount, 0)}</span>
           <button onClick={() => setAmount((a) => a + 10)} className="btn bg-base-600 px-2.5 py-1 text-white">+</button>
         </div>
       </div>
@@ -62,7 +62,7 @@ export default function SideBetPanel() {
             >
               <div className="text-sm font-black">≥ {m.threshold}x</div>
               <div className="text-[11px] font-bold text-win">{m.payout}x pay</div>
-              {done ? <div className="mt-0.5 text-[10px] text-gold">bet ₹{done}</div> : null}
+              {done ? <div className="mt-0.5 text-[10px] text-gold">bet {inr(done, 0)}</div> : null}
             </button>
           );
         })}

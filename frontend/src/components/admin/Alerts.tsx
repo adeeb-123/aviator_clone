@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAlerts } from '@/lib/store';
-import { dt } from '@/lib/format';
+import { dt, inr } from '@/lib/format';
 import type { AdminAlert } from '@/types';
 import PlayerDetail from './PlayerDetail';
 
@@ -86,7 +86,7 @@ export default function Alerts() {
                   </div>
                   <p className="mt-1 text-sm text-white/90">{a.message}</p>
                   {a.meta?.email != null && (
-                    <p className="mt-0.5 text-[11px] text-white/40">{String(a.meta.email)}{a.meta.balance != null ? ` · balance ₹${Number(a.meta.balance).toFixed(2)}` : ''}</p>
+                    <p className="mt-0.5 text-[11px] text-white/40">{String(a.meta.email)}{a.meta.balance != null ? ` · balance ${inr(Number(a.meta.balance))}` : ''}</p>
                   )}
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1">
