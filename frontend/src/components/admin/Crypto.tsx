@@ -11,6 +11,9 @@ export default function Crypto() {
   const [cryptoEnabled, setCryptoEnabled] = useState(true);
   const [limits, setLimits] = useState({ min: 500, max: 500000, confirmSeconds: 10 });
   const [msg, setMsg] = useState('');
+  const [rejecting, setRejecting] = useState<CryptoTx | null>(null);
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
 
   const load = () => {
     api.get('/admin/crypto/withdrawals', { params: { status: 'pending' } }).then((r) => setPending(r.data.withdrawals)).catch(() => {});
@@ -23,7 +26,13 @@ export default function Crypto() {
   useEffect(() => { load(); }, []);
 
   const approve = async (id: string) => { await api.post(`/admin/crypto/withdrawals/${id}/approve`).catch(() => {}); setMsg('✓ Withdrawal approved & marked paid'); load(); };
-  const reject = async (id: string) => { const reason = prompt('Reason for rejection (funds are refunded):') ?? ''; await api.post(`/admin/crypto/withdrawals/${id}/reject`, { reason }).catch(() => {}); setMsg('↩ Withdrawal rejected & refunded'); load(); };
+  const openReject = (w: CryptoTx) => { setRejecting(w); setReason(''); };
+  const confirmReject = async () => {
+    if (!rejecting || !reason.trim()) return;
+    setBusy(true);
+    try { await api.post(`/admin/crypto/withdrawals/${rejecting._id}/reject`, { reason: reason.trim() }); setMsg('↩ Withdrawal rejected & refunded — the player has been notified.'); setRejecting(null); load(); }
+    catch { setMsg('Could not reject withdrawal'); } finally { setBusy(false); }
+  };
   const setCoin = (symbol: string, patch: Partial<CryptoCoin>) => setCoins((cs) => cs.map((c) => (c.symbol === symbol ? { ...c, ...patch } : c)));
   const saveCoins = async () => {
     try { await api.patch('/admin/config', { cryptoEnabled, cryptoCoins: coins, cryptoWithdrawMin: limits.min, cryptoWithdrawMax: limits.max, cryptoConfirmSeconds: limits.confirmSeconds }); setMsg('✓ Crypto settings saved'); }
@@ -56,7 +65,7 @@ export default function Crypto() {
                 <td className="p-3 text-center">
                   <div className="flex justify-center gap-1">
                     <button onClick={() => approve(w._id)} className="rounded bg-win/80 px-2 py-1 text-xs text-white hover:bg-win">Approve</button>
-                    <button onClick={() => reject(w._id)} className="rounded bg-base-600 px-2 py-1 text-xs hover:bg-loss">Reject</button>
+                    <button onClick={() => openReject(w)} className="rounded bg-base-600 px-2 py-1 text-xs hover:bg-loss">Reject</button>
                   </div>
                 </td>
               </tr>
@@ -87,6 +96,54 @@ export default function Crypto() {
           <label className="block"><span className="mb-1 block text-xs text-white/50">Deposit confirm delay (sec)</span><input type="number" value={limits.confirmSeconds} onChange={(e) => setLimits((l) => ({ ...l, confirmSeconds: Number(e.target.value) }))} className="input" /></label>
         </div>
         <button onClick={saveCoins} className="btn-primary">Save crypto settings</button>
+      </div>
+
+      {rejecting && (
+        <RejectModal tx={rejecting} reason={reason} setReason={setReason} busy={busy} onCancel={() => setRejecting(null)} onConfirm={confirmReject} />
+      )}
+    </div>
+  );
+}
+
+const REASONS = [
+  'Invalid or unsupported wallet address',
+  'Suspected fraud or multiple accounts',
+  'Exceeds withdrawal / risk limits',
+  'Failed identity verification (KYC)',
+  'Bonus wagering requirement not met',
+  'Duplicate or accidental request',
+];
+
+function RejectModal({ tx, reason, setReason, busy, onCancel, onConfirm }: {
+  tx: CryptoTx; reason: string; setReason: (s: string) => void; busy: boolean; onCancel: () => void; onConfirm: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 p-4" onClick={onCancel}>
+      <div className="glass w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-1 flex items-start justify-between">
+          <h3 className="text-lg font-black">Reject withdrawal</h3>
+          <button onClick={onCancel} className="rounded px-2 text-xl text-white/40 hover:text-white">×</button>
+        </div>
+        <p className="mb-3 text-sm text-white/60">
+          @{tx.username} · <b className="text-white">{tx.cryptoAmount} {tx.coin}</b> ({inr(tx.inrAmount)}) will be <b className="text-win">refunded</b> and the player notified.
+        </p>
+
+        <div className="mb-2 text-xs font-bold uppercase tracking-widest text-white/40">Common reasons</div>
+        <div className="mb-3 flex flex-wrap gap-1.5">
+          {REASONS.map((r) => (
+            <button key={r} onClick={() => setReason(r)} className={`rounded-lg px-2.5 py-1 text-xs transition ${reason === r ? 'bg-accent text-white' : 'bg-base-700 text-white/60 hover:text-white'}`}>{r}</button>
+          ))}
+        </div>
+
+        <label className="block text-sm">
+          <span className="mb-1 block text-xs text-white/50">Reason (required — shown to the player)</span>
+          <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} maxLength={200} placeholder="Pick a reason above or type your own…" className="input w-full resize-none" autoFocus />
+        </label>
+
+        <div className="mt-4 flex justify-end gap-2">
+          <button onClick={onCancel} className="btn bg-base-700 text-white/70">Cancel</button>
+          <button onClick={onConfirm} disabled={busy || !reason.trim()} className="btn-loss disabled:opacity-40">{busy ? 'Rejecting…' : 'Reject & refund'}</button>
+        </div>
       </div>
     </div>
   );

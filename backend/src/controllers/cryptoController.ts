@@ -120,6 +120,12 @@ export const adminListWithdrawals = asyncHandler(async (req: Request, res: Respo
   res.json({ withdrawals: txs });
 });
 
+function notify(userId: unknown, kind: 'success' | 'error' | 'info', title: string, message: string): void {
+  try { getGameEngine().emitToUser(String(userId), 'user:notify', { id: crypto.randomUUID(), kind, title, message, createdAt: new Date() }); }
+  catch (err) { logger.warn({ err }, 'notify emit failed'); }
+}
+const inrFmt = (n: number) => '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 export const adminApprove = asyncHandler(async (req: Request, res: Response) => {
   const tx = await CryptoTransaction.findById(req.params.id);
   if (!tx || tx.type !== 'withdrawal') throw notFound('Withdrawal not found');
@@ -127,19 +133,23 @@ export const adminApprove = asyncHandler(async (req: Request, res: Response) => 
   tx.status = 'completed';
   tx.txHash = fakeTxHash();
   await tx.save();
+  notify(tx.userId, 'success', 'Withdrawal approved ✅', `Your ${tx.cryptoAmount} ${tx.coin} withdrawal (${inrFmt(tx.inrAmount)}) has been sent. Tx: ${tx.txHash.slice(0, 14)}…`);
   logAdmin(req, 'crypto-withdraw-approve', `@${tx.username} ${tx.cryptoAmount} ${tx.coin}`, { inrAmount: tx.inrAmount });
   res.json({ tx });
 });
 
 export const adminReject = asyncHandler(async (req: Request, res: Response) => {
+  const reason = String(req.body?.reason ?? '').trim();
+  if (!reason) throw badRequest('A rejection reason is required');
   const tx = await CryptoTransaction.findById(req.params.id);
   if (!tx || tx.type !== 'withdrawal') throw notFound('Withdrawal not found');
   if (tx.status !== 'pending') throw badRequest('Withdrawal already processed');
   const balance = await adjustBalance({ userId: tx.userId, amount: tx.inrAmount, type: 'refund', description: `Rejected crypto withdrawal ${tx.cryptoAmount} ${tx.coin}` });
   tx.status = 'rejected';
-  tx.note = String(req.body?.reason ?? 'Rejected by admin').slice(0, 200);
+  tx.note = reason.slice(0, 200);
   await tx.save();
   try { getGameEngine().emitToUser(String(tx.userId), 'balance:update', { balance }); } catch { /* ignore */ }
-  logAdmin(req, 'crypto-withdraw-reject', `@${tx.username} ${tx.cryptoAmount} ${tx.coin}`, { refunded: tx.inrAmount });
+  notify(tx.userId, 'error', 'Withdrawal rejected ❌', `Your ${tx.cryptoAmount} ${tx.coin} withdrawal was rejected: “${tx.note}”. ${inrFmt(tx.inrAmount)} has been refunded to your balance.`);
+  logAdmin(req, 'crypto-withdraw-reject', `@${tx.username} ${tx.cryptoAmount} ${tx.coin}`, { refunded: tx.inrAmount, reason: tx.note });
   res.json({ tx });
 });

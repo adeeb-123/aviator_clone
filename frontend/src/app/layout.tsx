@@ -4,6 +4,7 @@ import './globals.css';
 import { Providers } from './providers';
 import { I18nProvider } from '@/lib/i18n';
 import Announcements from '@/components/Announcements';
+import Notifications from '@/components/Notifications';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 
@@ -23,6 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <I18nProvider>
           <Providers>
             <Announcements />
+            <Notifications />
             {children}
           </Providers>
         </I18nProvider>
