@@ -94,6 +94,60 @@ export const getStats = asyncHandler(async (req: Request, res: Response) => {
   res.json({ stats, badges, level });
 });
 
+/** GET /users/dashboard — consolidated personal overview + analytics for the profile page. */
+export const getDashboard = asyncHandler(async (req: Request, res: Response) => {
+  const oid = new Types.ObjectId(req.user!.sub);
+  const user = await User.findById(oid).select('username avatar bio balance dailyStreak referralCode vipTier createdAt claimedBadges').lean();
+  if (!user) throw notFound('User not found');
+
+  const { stats, badgeStats, level } = await summarise(oid, user.dailyStreak ?? 0);
+  const { current, next, progressPct, toNext } = resolveVip(stats.wagered);
+
+  // recent bets (newest first for the list; reversed for the cumulative chart)
+  const recent = await Bet.find({ userId: oid }).sort({ createdAt: -1 }).limit(40)
+    .select('amount payout status cashoutMultiplier roundId createdAt').lean();
+  let cum = 0;
+  const plChart = recent.slice().reverse().map((b, i) => {
+    const pl = (b.payout ?? 0) - b.amount;
+    cum = round2(cum + pl);
+    return { n: i + 1, pl: round2(pl), cum };
+  });
+
+  // last 7 days performance (fill gaps)
+  const since = startOfDay(new Date()); since.setDate(since.getDate() - 6);
+  const agg = await Bet.aggregate([
+    { $match: { userId: oid, createdAt: { $gte: since } } },
+    { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }, wagered: { $sum: '$amount' }, won: { $sum: '$payout' }, bets: { $sum: 1 } } },
+  ]);
+  const byDay = new Map(agg.map((d) => [d._id, d]));
+  const daily: { date: string; wagered: number; won: number; net: number; bets: number }[] = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(since); d.setDate(since.getDate() + i);
+    const key = d.toISOString().slice(0, 10);
+    const row = byDay.get(key);
+    daily.push({ date: d.toLocaleDateString('en-IN', { weekday: 'short' }), wagered: round2(row?.wagered ?? 0), won: round2(row?.won ?? 0), net: round2((row?.won ?? 0) - (row?.wagered ?? 0)), bets: row?.bets ?? 0 });
+  }
+
+  const recentTx = await Transaction.find({ userId: oid }).sort({ createdAt: -1 }).limit(8).select('type amount balanceAfter description createdAt').lean();
+  const badgesEarned = BADGES.filter((b) => b.earned(badgeStats)).length;
+
+  res.json({
+    profile: {
+      username: user.username, avatar: user.avatar, bio: user.bio, balance: round2(user.balance),
+      joinedAt: user.createdAt, dailyStreak: user.dailyStreak ?? 0, referralCode: user.referralCode,
+      level: { ...level, title: level.title }, vipTier: current,
+    },
+    stats,
+    vip: { tier: current, next, progressPct, toNext, wagered: stats.wagered },
+    outcome: { wins: stats.wins, losses: stats.losses },
+    plChart,
+    daily,
+    badgesEarned, totalBadges: BADGES.length,
+    recentBets: recent.slice(0, 8),
+    recentTx,
+  });
+});
+
 /** POST /users/badges/:id/claim — claim a one-time milestone reward for an earned badge. */
 export const claimBadge = asyncHandler(async (req: Request, res: Response) => {
   const def = BADGES.find((b) => b.id === req.params.id);

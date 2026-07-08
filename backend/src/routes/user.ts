@@ -10,6 +10,7 @@ router.use(authenticate);
 router.get('/me', ctrl.me);
 router.patch('/me', validate(updateProfileSchema), ctrl.updateProfile);
 router.get('/stats', ctrl.getStats);
+router.get('/dashboard', ctrl.getDashboard);
 router.post('/daily-claim', ctrl.claimDaily);
 router.get('/vip', ctrl.getVip);
 router.post('/cashback', ctrl.claimCashback);

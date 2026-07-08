@@ -20,6 +20,7 @@ export default function Header() {
   const navLinks = (
     <>
       <Link href="/" className="hover:text-white" onClick={() => setMenuOpen(false)}>{t('nav.play')}</Link>
+      {user && <Link href="/dashboard" className="hover:text-white" onClick={() => setMenuOpen(false)}>📊 Dashboard</Link>}
       {user && <Link href="/rewards" data-tour="rewards" className="hover:text-white" onClick={() => setMenuOpen(false)}>{t('nav.rewards')}</Link>}
       {user && <Link href="/tournaments" className="hover:text-white" onClick={() => setMenuOpen(false)}>{t('nav.tournaments')}</Link>}
       {user && <Link href="/stats" className="hover:text-white" onClick={() => setMenuOpen(false)}>{t('nav.stats')}</Link>}
@@ -64,7 +65,7 @@ export default function Header() {
             {user ? (
               <>
                 <Link href="/wallet" className="btn-primary text-sm">{t('nav.wallet')}</Link>
-                <Link href="/profile" className="hidden text-sm text-white/70 hover:text-white lg:block">{user.avatar ?? '👤'} {user.username}</Link>
+                <Link href="/dashboard" className="hidden text-sm text-white/70 hover:text-white lg:block">{user.avatar ?? '👤'} {user.username}</Link>
                 <button className="btn bg-base-700 text-sm text-white/70" onClick={() => void logout()}>{t('nav.logout')}</button>
               </>
             ) : (
