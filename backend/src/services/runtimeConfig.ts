@@ -20,7 +20,8 @@ export interface SideBetMarket {
 export interface CryptoCoin {
   symbol: string; // BTC, ETH, USDT
   name: string;
-  rate: number; // INR per 1 unit of the coin
+  rate: number; // base INR per 1 unit (live rate drifts around this)
+  networkFee: number; // flat network fee deducted on withdrawal, in coin units
   enabled: boolean;
 }
 
@@ -45,6 +46,9 @@ export interface RuntimeConfig {
   // ── crypto wallet (demo) ──
   cryptoEnabled: boolean;
   cryptoCoins: CryptoCoin[];
+  cryptoWithdrawMin: number; // ₹
+  cryptoWithdrawMax: number; // ₹
+  cryptoConfirmSeconds: number; // simulated deposit confirmation delay
 }
 
 const DEFAULT_BANNED = ['fuck', 'shit', 'bitch', 'asshole', 'bastard', 'cunt', 'dick', 'scam', 'rigged'];
@@ -58,11 +62,11 @@ const DEFAULT_MARKETS: SideBetMarket[] = [
   { id: 'over10', threshold: 10, payout: 9.2, enabled: true },
 ];
 
-// Rate = INR per 1 coin (demo values; admin-tunable).
+// Rate = base INR per 1 coin (demo values; admin-tunable). networkFee in coin units.
 const DEFAULT_COINS: CryptoCoin[] = [
-  { symbol: 'BTC', name: 'Bitcoin', rate: 5_000_000, enabled: true },
-  { symbol: 'ETH', name: 'Ethereum', rate: 300_000, enabled: true },
-  { symbol: 'USDT', name: 'Tether', rate: 85, enabled: true },
+  { symbol: 'BTC', name: 'Bitcoin', rate: 5_000_000, networkFee: 0.0004, enabled: true },
+  { symbol: 'ETH', name: 'Ethereum', rate: 300_000, networkFee: 0.003, enabled: true },
+  { symbol: 'USDT', name: 'Tether', rate: 85, networkFee: 1, enabled: true },
 ];
 
 let cache: RuntimeConfig = {
@@ -83,6 +87,9 @@ let cache: RuntimeConfig = {
   jackpotTrigger: 25,
   cryptoEnabled: true,
   cryptoCoins: DEFAULT_COINS,
+  cryptoWithdrawMin: 500,
+  cryptoWithdrawMax: 500_000,
+  cryptoConfirmSeconds: 10,
 };
 
 export function cfg(): RuntimeConfig {
@@ -134,9 +141,12 @@ export async function updateConfig(patch: Partial<RuntimeConfig>): Promise<Runti
   if (Array.isArray(patch.cryptoCoins)) {
     next.cryptoCoins = patch.cryptoCoins
       .filter((c) => c && typeof c.symbol === 'string')
-      .map((c) => ({ symbol: String(c.symbol).toUpperCase().slice(0, 8), name: String(c.name ?? c.symbol).slice(0, 30), rate: clampNum(c.rate, 0.0001, 1e12, 1), enabled: Boolean(c.enabled) }))
+      .map((c) => ({ symbol: String(c.symbol).toUpperCase().slice(0, 8), name: String(c.name ?? c.symbol).slice(0, 30), rate: clampNum(c.rate, 0.0001, 1e12, 1), networkFee: clampNum(c.networkFee, 0, 1e9, 0), enabled: Boolean(c.enabled) }))
       .slice(0, 20);
   }
+  if (patch.cryptoWithdrawMin !== undefined) next.cryptoWithdrawMin = clampNum(patch.cryptoWithdrawMin, 0, 1e9, cache.cryptoWithdrawMin);
+  if (patch.cryptoWithdrawMax !== undefined) next.cryptoWithdrawMax = clampNum(patch.cryptoWithdrawMax, next.cryptoWithdrawMin, 1e12, cache.cryptoWithdrawMax);
+  if (patch.cryptoConfirmSeconds !== undefined) next.cryptoConfirmSeconds = clampNum(patch.cryptoConfirmSeconds, 0, 300, cache.cryptoConfirmSeconds);
 
   cache = next;
   await AppConfig.updateOne({ key: 'game' }, { $set: { value: cache } }, { upsert: true });

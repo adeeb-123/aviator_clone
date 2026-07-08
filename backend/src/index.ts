@@ -8,6 +8,8 @@ import { connectRedis } from './config/redis';
 import { initGameEngine } from './services/gameEngine';
 import { loadConfig } from './services/runtimeConfig';
 import { loadJackpot } from './services/jackpotService';
+import { startMarket } from './services/marketService';
+import { sweepPendingDeposits } from './controllers/cryptoController';
 import { initAlerts } from './services/alertService';
 import { setupSocket } from './socket';
 import { User } from './models/User';
@@ -62,6 +64,8 @@ export async function bootstrap(): Promise<void> {
   await ensureAdmin();
   await loadConfig();
   await loadJackpot();
+  startMarket();
+  await sweepPendingDeposits();
 
   const app = createApp();
   const server = http.createServer(app);

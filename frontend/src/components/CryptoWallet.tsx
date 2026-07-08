@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { getSocket } from '@/lib/socket';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/store';
 import { inr, dt } from '@/lib/format';
@@ -15,6 +16,7 @@ export default function CryptoWallet() {
   const setBalance = useAuth((s) => s.setBalance);
   const [coins, setCoins] = useState<CryptoCoin[]>([]);
   const [enabled, setEnabled] = useState(true);
+  const [limits, setLimits] = useState({ min: 0, max: 0, confirmSeconds: 10 });
   const [sel, setSel] = useState('');
   const [tab, setTab] = useState<'deposit' | 'withdraw'>('deposit');
   const [amount, setAmount] = useState('');
@@ -23,26 +25,51 @@ export default function CryptoWallet() {
   const [msg, setMsg] = useState('');
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const prevRates = useRef<Record<string, number>>({});
+  const [dir, setDir] = useState<Record<string, 'up' | 'down' | ''>>({});
 
-  const load = () => {
-    api.get('/crypto/coins').then((r) => { setCoins(r.data.coins); setEnabled(r.data.enabled); setSel((s) => s || r.data.coins[0]?.symbol || ''); }).catch(() => {});
-    api.get('/crypto/history').then((r) => setTxs(r.data.transactions)).catch(() => {});
-  };
-  useEffect(() => { load(); }, []);
+  const loadCoins = () => api.get('/crypto/coins').then((r) => {
+    const cs: CryptoCoin[] = r.data.coins;
+    const d: Record<string, 'up' | 'down' | ''> = {};
+    cs.forEach((c) => { const p = prevRates.current[c.symbol]; d[c.symbol] = p == null ? '' : c.rate > p ? 'up' : c.rate < p ? 'down' : ''; prevRates.current[c.symbol] = c.rate; });
+    setDir(d); setCoins(cs); setEnabled(r.data.enabled);
+    setLimits({ min: r.data.withdrawMin, max: r.data.withdrawMax, confirmSeconds: r.data.confirmSeconds });
+    setSel((s) => s || cs[0]?.symbol || '');
+  }).catch(() => {});
+  const loadHistory = () => api.get('/crypto/history').then((r) => setTxs(r.data.transactions)).catch(() => {});
+
+  useEffect(() => { loadCoins(); loadHistory(); const id = setInterval(loadCoins, 8000); return () => clearInterval(id); }, []);
+
+  useEffect(() => {
+    const s = getSocket();
+    const onConfirmed = (p: { coin: string; inrAmount: number; balance: number }) => {
+      setConfirming(false); setBalance(p.balance); sound.reward();
+      setMsg(`✅ Deposit confirmed — +${inr(p.inrAmount)} credited!`); loadHistory();
+    };
+    s.on('crypto:confirmed', onConfirmed);
+    return () => { s.off('crypto:confirmed', onConfirmed); };
+  }, [setBalance]);
 
   const coin = coins.find((c) => c.symbol === sel);
-  const inrValue = coin && Number(amount) ? Number(amount) * coin.rate : 0;
+  const amt = Number(amount) || 0;
+  const rate = coin?.rate ?? 0;
+  const inrValue = amt * rate;
+  const fee = coin?.networkFee ?? 0;
+  const net = Math.max(0, amt - fee);
+  const belowMin = tab === 'withdraw' && amt > 0 && inrValue < limits.min;
+  const aboveMax = tab === 'withdraw' && inrValue > limits.max;
 
   const deposit = async () => {
-    if (!coin || !Number(amount)) return;
+    if (!coin || !amt) return;
     setBusy(true); setMsg('');
-    try { const { data } = await api.post('/crypto/deposit', { coin: sel, cryptoAmount: Number(amount) }); setBalance(data.balance); sound.reward(); setMsg(`✅ Deposited ${amount} ${sel} → +${inr(data.tx.inrAmount)}`); setAmount(''); load(); }
+    try { const { data } = await api.post('/crypto/deposit', { coin: sel, cryptoAmount: amt }); setConfirming(true); setMsg(`⏳ Deposit received — confirming on-chain (~${data.confirmSeconds}s)…`); setAmount(''); loadHistory(); }
     catch (e) { setMsg(errText(e)); } finally { setBusy(false); }
   };
   const withdraw = async () => {
-    if (!coin || !Number(amount) || !address) return;
+    if (!coin || !amt || !address) return;
     setBusy(true); setMsg('');
-    try { const { data } = await api.post('/crypto/withdraw', { coin: sel, cryptoAmount: Number(amount), address }); setBalance(data.balance); setMsg(`⏳ Withdrawal of ${amount} ${sel} requested — pending admin approval.`); setAmount(''); setAddress(''); load(); }
+    try { const { data } = await api.post('/crypto/withdraw', { coin: sel, cryptoAmount: amt, address }); setBalance(data.balance); setMsg(`⏳ Withdrawal of ${net} ${sel} requested — pending admin approval.`); setAmount(''); setAddress(''); loadHistory(); }
     catch (e) { setMsg(errText(e)); } finally { setBusy(false); }
   };
   const copy = () => { if (coin?.address) { navigator.clipboard?.writeText(coin.address); setCopied(true); setTimeout(() => setCopied(false), 1500); } };
@@ -52,19 +79,20 @@ export default function CryptoWallet() {
   return (
     <div className="glass p-6">
       <h2 className="mb-1 flex items-center gap-2 font-semibold">🪙 Crypto Wallet <span className="rounded bg-base-700 px-1.5 py-0.5 text-[10px] font-normal text-white/40">DEMO</span></h2>
-      <p className="mb-4 text-xs text-white/40">Deposit or withdraw using crypto. Balances convert to ₹ at the live rate.</p>
+      <p className="mb-4 text-xs text-white/40">Deposit or withdraw using crypto. Rates are live and convert to ₹.</p>
 
-      {/* coin selector */}
+      {/* coin selector with live rate ticks */}
       <div className="mb-4 flex flex-wrap gap-2">
         {coins.map((c) => (
           <button key={c.symbol} onClick={() => setSel(c.symbol)} className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm ${sel === c.symbol ? 'border-accent-glow bg-accent/15 text-white' : 'border-white/10 text-white/60 hover:text-white'}`}>
             <span className="text-base">{ICON[c.symbol] ?? '🪙'}</span> {c.symbol}
-            <span className="text-[11px] text-white/40">₹{c.rate.toLocaleString('en-IN')}</span>
+            <span className={`text-[11px] tabular-nums ${dir[c.symbol] === 'up' ? 'text-win' : dir[c.symbol] === 'down' ? 'text-loss' : 'text-white/40'}`}>
+              ₹{c.rate.toLocaleString('en-IN')} {dir[c.symbol] === 'up' ? '▲' : dir[c.symbol] === 'down' ? '▼' : ''}
+            </span>
           </button>
         ))}
       </div>
 
-      {/* deposit / withdraw tabs */}
       <div className="mb-4 flex gap-1 rounded-lg bg-base-700/60 p-0.5 text-sm">
         {(['deposit', 'withdraw'] as const).map((t) => (
           <button key={t} onClick={() => { setTab(t); setMsg(''); }} className={`flex-1 rounded px-3 py-1.5 font-semibold capitalize ${tab === t ? 'bg-accent text-white' : 'text-white/50'}`}>{t}</button>
@@ -79,7 +107,6 @@ export default function CryptoWallet() {
               <code className="min-w-0 flex-1 truncate rounded bg-base-800 px-2 py-1.5 font-mono text-xs text-accent-glow">{coin.address}</code>
               <button onClick={copy} className="btn-primary shrink-0 px-3 py-1.5 text-xs">{copied ? '✓' : 'Copy'}</button>
             </div>
-            {/* faux scan panel */}
             <div className="mt-3 flex items-center gap-3">
               <div className="grid h-16 w-16 shrink-0 grid-cols-4 gap-0.5 rounded bg-white p-1.5" aria-hidden>
                 {Array.from({ length: 16 }).map((_, i) => <div key={i} className={((i * 7 + (coin.address?.charCodeAt(i % (coin.address.length || 1)) ?? 0)) % 2) ? 'bg-black' : 'bg-white'} />)}
@@ -91,9 +118,11 @@ export default function CryptoWallet() {
             <span className="mb-1 block text-xs text-white/50">Amount ({coin.symbol})</span>
             <input type="number" step="any" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder={`0.00 ${coin.symbol}`} className="input" />
           </label>
-          {inrValue > 0 && <p className="text-xs text-white/50">You&apos;ll receive <b className="text-win">{inr(inrValue)}</b></p>}
-          <button onClick={deposit} disabled={busy || !Number(amount)} className="btn-win w-full">I&apos;ve sent it — credit my balance</button>
-          <p className="text-[11px] text-white/30">Demo wallet: deposits confirm instantly. No real coins are moved.</p>
+          {inrValue > 0 && <p className="text-xs text-white/50">You&apos;ll receive <b className="text-win">{inr(inrValue)}</b> at the current rate</p>}
+          <button onClick={deposit} disabled={busy || confirming || !amt} className="btn-win w-full disabled:opacity-50">
+            {confirming ? '⏳ Confirming…' : "I've sent it — deposit"}
+          </button>
+          <p className="text-[11px] text-white/30">Demo: deposits confirm after ~{limits.confirmSeconds}s (simulated block confirmations). No real coins are moved.</p>
         </div>
       )}
 
@@ -107,15 +136,22 @@ export default function CryptoWallet() {
             <span className="mb-1 block text-xs text-white/50">Amount ({coin.symbol})</span>
             <input type="number" step="any" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder={`0.00 ${coin.symbol}`} className="input" />
           </label>
-          {inrValue > 0 && <p className="text-xs text-white/50">Debits <b className="text-loss">{inr(inrValue)}</b> from your balance</p>}
-          <button onClick={withdraw} disabled={busy || !Number(amount) || !address} className="btn-primary w-full">Request withdrawal</button>
-          <p className="text-[11px] text-white/30">Withdrawals are debited immediately and paid out after admin approval (refunded if rejected).</p>
+          {amt > 0 && (
+            <div className="space-y-0.5 rounded-lg bg-base-700/30 p-2.5 text-xs">
+              <div className="flex justify-between"><span className="text-white/50">Network fee</span><span>{fee} {coin.symbol}</span></div>
+              <div className="flex justify-between"><span className="text-white/50">You receive</span><span className="font-bold text-white">{net} {coin.symbol}</span></div>
+              <div className="flex justify-between"><span className="text-white/50">Debited</span><span className="font-bold text-loss">{inr(inrValue)}</span></div>
+            </div>
+          )}
+          {belowMin && <p className="text-xs text-loss">Minimum withdrawal is {inr(limits.min)}.</p>}
+          {aboveMax && <p className="text-xs text-loss">Maximum withdrawal is {inr(limits.max)}.</p>}
+          <button onClick={withdraw} disabled={busy || !amt || !address || belowMin || aboveMax || amt <= fee} className="btn-primary w-full disabled:opacity-50">Request withdrawal</button>
+          <p className="text-[11px] text-white/30">Limits: {inr(limits.min)}–{inr(limits.max)}. Debited immediately; paid after admin approval (refunded if rejected).</p>
         </div>
       )}
 
       {msg && <p className="mt-3 rounded-lg bg-base-700/40 px-3 py-2 text-sm text-white/80">{msg}</p>}
 
-      {/* history */}
       {txs.length > 0 && (
         <div className="mt-5">
           <h3 className="mb-2 text-xs font-bold uppercase tracking-widest text-white/40">Crypto activity</h3>
@@ -123,7 +159,7 @@ export default function CryptoWallet() {
             {txs.map((t) => (
               <div key={t._id} className="flex items-center justify-between gap-2 rounded bg-base-700/40 px-3 py-1.5">
                 <span className="capitalize text-white/60">{t.type === 'deposit' ? '⬇ Deposit' : '⬆ Withdraw'}</span>
-                <span className="text-white/40">{t.cryptoAmount} {t.coin}</span>
+                <span className="text-white/40">{t.cryptoAmount} {t.coin}{t.type === 'withdrawal' && t.feeAmount ? ` (−${t.feeAmount} fee)` : ''}</span>
                 <span className={t.type === 'deposit' ? 'text-win' : 'text-loss'}>{t.type === 'deposit' ? '+' : '−'}{inr(t.inrAmount)}</span>
                 <span className={`w-16 text-right text-xs capitalize ${STATUS[t.status] ?? 'text-white/40'}`}>{t.status}</span>
                 <span className="hidden w-24 text-right text-[11px] text-white/30 sm:block">{dt(t.createdAt)}</span>

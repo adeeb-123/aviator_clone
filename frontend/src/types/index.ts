@@ -174,7 +174,9 @@ export interface SideBetMarket {
 export interface CryptoCoin {
   symbol: string;
   name: string;
-  rate: number; // INR per coin
+  rate: number; // live INR per coin
+  baseRate?: number; // admin-set anchor rate
+  networkFee?: number; // flat withdrawal fee in coin units
   address?: string; // caller's deposit address
   enabled?: boolean;
 }
@@ -187,6 +189,8 @@ export interface CryptoTx {
   cryptoAmount: number;
   inrAmount: number;
   rate: number;
+  feeAmount?: number;
+  netAmount?: number;
   address: string;
   txHash?: string;
   status: 'pending' | 'confirmed' | 'completed' | 'rejected';

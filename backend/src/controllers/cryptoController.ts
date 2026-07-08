@@ -3,7 +3,10 @@ import crypto from 'crypto';
 import { CryptoTransaction } from '../models/CryptoTransaction';
 import { adjustBalance } from '../services/ledger';
 import { cfg } from '../services/runtimeConfig';
+import { liveRate } from '../services/marketService';
+import { getGameEngine } from '../services/gameEngine';
 import { logAdmin } from '../services/adminAudit';
+import { logger } from '../utils/logger';
 import { asyncHandler } from '../middleware/error';
 import { badRequest, notFound } from '../utils/errors';
 
@@ -21,15 +24,39 @@ function depositAddress(userId: string, coin: string): string {
 const fakeTxHash = () => '0x' + crypto.randomBytes(32).toString('hex');
 const findCoin = (symbol: string) => cfg().cryptoCoins.find((c) => c.symbol === symbol && c.enabled);
 
-/** GET /crypto/coins — enabled coins, rates and the caller's deposit addresses. */
+/** Confirm a pending deposit: credit ₹ and notify the player in real time. */
+async function confirmDeposit(txId: string): Promise<void> {
+  const tx = await CryptoTransaction.findById(txId);
+  if (!tx || tx.type !== 'deposit' || tx.status !== 'pending') return;
+  tx.status = 'confirmed';
+  tx.txHash = fakeTxHash();
+  await tx.save();
+  const balance = await adjustBalance({ userId: tx.userId, amount: tx.inrAmount, type: 'deposit', description: `Crypto deposit ${tx.cryptoAmount} ${tx.coin}` });
+  try {
+    getGameEngine().emitToUser(String(tx.userId), 'balance:update', { balance });
+    getGameEngine().emitToUser(String(tx.userId), 'crypto:confirmed', { id: String(tx._id), coin: tx.coin, inrAmount: tx.inrAmount, balance });
+  } catch (err) { logger.warn({ err }, 'crypto confirm notify failed'); }
+}
+
+/** Startup sweep: confirm any deposits left pending past the delay (survives restarts). */
+export async function sweepPendingDeposits(): Promise<void> {
+  const cutoff = new Date(Date.now() - cfg().cryptoConfirmSeconds * 1000);
+  const stuck = await CryptoTransaction.find({ type: 'deposit', status: 'pending', createdAt: { $lte: cutoff } }).select('_id').lean();
+  for (const t of stuck) await confirmDeposit(String(t._id));
+  if (stuck.length) logger.info({ count: stuck.length }, 'Swept pending crypto deposits');
+}
+
+/** GET /crypto/coins — live rates, fees, addresses and withdrawal limits. */
 export const getCoins = asyncHandler(async (req: Request, res: Response) => {
-  const coins = cfg().cryptoCoins
-    .filter((c) => c.enabled)
-    .map((c) => ({ symbol: c.symbol, name: c.name, rate: c.rate, address: depositAddress(req.user!.sub, c.symbol) }));
-  res.json({ enabled: cfg().cryptoEnabled, coins });
+  const coins = cfg().cryptoCoins.filter((c) => c.enabled).map((c) => ({
+    symbol: c.symbol, name: c.name,
+    rate: liveRate(c.rate, c.symbol), baseRate: c.rate, networkFee: c.networkFee,
+    address: depositAddress(req.user!.sub, c.symbol),
+  }));
+  res.json({ enabled: cfg().cryptoEnabled, coins, withdrawMin: cfg().cryptoWithdrawMin, withdrawMax: cfg().cryptoWithdrawMax, confirmSeconds: cfg().cryptoConfirmSeconds });
 });
 
-/** POST /crypto/deposit — simulate a confirmed on-chain deposit; credit INR. */
+/** POST /crypto/deposit — record a pending deposit; confirm + credit after a delay. */
 export const deposit = asyncHandler(async (req: Request, res: Response) => {
   if (!cfg().cryptoEnabled) throw badRequest('Crypto is currently disabled');
   const coin = findCoin(String(req.body?.coin ?? ''));
@@ -37,19 +64,24 @@ export const deposit = asyncHandler(async (req: Request, res: Response) => {
   const cryptoAmount = Number(req.body?.cryptoAmount);
   if (!Number.isFinite(cryptoAmount) || cryptoAmount <= 0) throw badRequest('Enter a valid amount');
 
-  const inrAmount = round2(cryptoAmount * coin.rate);
+  const rate = liveRate(coin.rate, coin.symbol);
+  const inrAmount = round2(cryptoAmount * rate);
   if (inrAmount <= 0) throw badRequest('Amount too small');
 
-  const address = depositAddress(req.user!.sub, coin.symbol);
-  const balance = await adjustBalance({ userId: req.user!.sub, amount: inrAmount, type: 'deposit', description: `Crypto deposit ${cryptoAmount} ${coin.symbol}` });
   const tx = await CryptoTransaction.create({
     userId: req.user!.sub, username: req.user!.username, type: 'deposit', coin: coin.symbol,
-    cryptoAmount: round8(cryptoAmount), inrAmount, rate: coin.rate, address, txHash: fakeTxHash(), status: 'confirmed',
+    cryptoAmount: round8(cryptoAmount), inrAmount, rate, address: depositAddress(req.user!.sub, coin.symbol), status: 'pending',
   });
-  res.json({ balance, tx });
+
+  const delayMs = Math.max(0, cfg().cryptoConfirmSeconds) * 1000;
+  if (delayMs === 0) { await confirmDeposit(String(tx._id)); }
+  else setTimeout(() => { confirmDeposit(String(tx._id)).catch((err) => logger.warn({ err }, 'deferred confirm failed')); }, delayMs);
+
+  const fresh = await CryptoTransaction.findById(tx._id).lean();
+  res.json({ tx: fresh, confirmSeconds: cfg().cryptoConfirmSeconds });
 });
 
-/** POST /crypto/withdraw — debit INR now; queue a pending withdrawal for admin approval. */
+/** POST /crypto/withdraw — validate limits + fee, debit ₹, queue for admin approval. */
 export const withdraw = asyncHandler(async (req: Request, res: Response) => {
   if (!cfg().cryptoEnabled) throw badRequest('Crypto is currently disabled');
   const coin = findCoin(String(req.body?.coin ?? ''));
@@ -58,15 +90,19 @@ export const withdraw = asyncHandler(async (req: Request, res: Response) => {
   const address = String(req.body?.address ?? '').trim();
   if (!Number.isFinite(cryptoAmount) || cryptoAmount <= 0) throw badRequest('Enter a valid amount');
   if (address.length < 12 || address.length > 120) throw badRequest('Enter a valid wallet address');
+  if (cryptoAmount <= coin.networkFee) throw badRequest(`Amount must exceed the network fee (${coin.networkFee} ${coin.symbol})`);
 
-  const inrAmount = round2(cryptoAmount * coin.rate);
-  if (inrAmount <= 0) throw badRequest('Amount too small');
+  const rate = liveRate(coin.rate, coin.symbol);
+  const inrAmount = round2(cryptoAmount * rate);
+  if (inrAmount < cfg().cryptoWithdrawMin) throw badRequest(`Minimum withdrawal is ₹${cfg().cryptoWithdrawMin.toLocaleString('en-IN')}`);
+  if (inrAmount > cfg().cryptoWithdrawMax) throw badRequest(`Maximum withdrawal is ₹${cfg().cryptoWithdrawMax.toLocaleString('en-IN')}`);
 
+  const netAmount = round8(cryptoAmount - coin.networkFee);
   // Debit immediately (atomic, insufficient-funds guarded); refunded if admin rejects.
   const balance = await adjustBalance({ userId: req.user!.sub, amount: -inrAmount, type: 'withdraw', description: `Crypto withdrawal ${cryptoAmount} ${coin.symbol}` });
   const tx = await CryptoTransaction.create({
     userId: req.user!.sub, username: req.user!.username, type: 'withdrawal', coin: coin.symbol,
-    cryptoAmount: round8(cryptoAmount), inrAmount, rate: coin.rate, address, status: 'pending',
+    cryptoAmount: round8(cryptoAmount), inrAmount, rate, feeAmount: coin.networkFee, netAmount, address, status: 'pending',
   });
   res.json({ balance, tx });
 });
@@ -99,11 +135,11 @@ export const adminReject = asyncHandler(async (req: Request, res: Response) => {
   const tx = await CryptoTransaction.findById(req.params.id);
   if (!tx || tx.type !== 'withdrawal') throw notFound('Withdrawal not found');
   if (tx.status !== 'pending') throw badRequest('Withdrawal already processed');
-  // Refund the debited INR back to the player.
-  await adjustBalance({ userId: tx.userId, amount: tx.inrAmount, type: 'refund', description: `Rejected crypto withdrawal ${tx.cryptoAmount} ${tx.coin}` });
+  const balance = await adjustBalance({ userId: tx.userId, amount: tx.inrAmount, type: 'refund', description: `Rejected crypto withdrawal ${tx.cryptoAmount} ${tx.coin}` });
   tx.status = 'rejected';
   tx.note = String(req.body?.reason ?? 'Rejected by admin').slice(0, 200);
   await tx.save();
+  try { getGameEngine().emitToUser(String(tx.userId), 'balance:update', { balance }); } catch { /* ignore */ }
   logAdmin(req, 'crypto-withdraw-reject', `@${tx.username} ${tx.cryptoAmount} ${tx.coin}`, { refunded: tx.inrAmount });
   res.json({ tx });
 });

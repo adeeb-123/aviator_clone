@@ -9,6 +9,8 @@ export interface ICryptoTransaction {
   cryptoAmount: number;
   inrAmount: number;
   rate: number; // INR per coin at the time
+  feeAmount: number; // network fee in coin units (withdrawals)
+  netAmount: number; // coin actually received after fee (withdrawals)
   address: string; // deposit address (deposit) or destination address (withdrawal)
   txHash?: string; // simulated on-chain tx reference
   status: 'pending' | 'confirmed' | 'completed' | 'rejected';
@@ -26,6 +28,8 @@ const cryptoTxSchema = new Schema<ICryptoTransaction>(
     cryptoAmount: { type: Number, required: true },
     inrAmount: { type: Number, required: true },
     rate: { type: Number, required: true },
+    feeAmount: { type: Number, default: 0 },
+    netAmount: { type: Number, default: 0 },
     address: { type: String, required: true },
     txHash: { type: String },
     status: { type: String, enum: ['pending', 'confirmed', 'completed', 'rejected'], default: 'pending', index: true },
