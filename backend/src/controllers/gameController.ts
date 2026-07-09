@@ -24,9 +24,17 @@ export const getHistory = asyncHandler(async (req: Request, res: Response) => {
 
 export const getRound = asyncHandler(async (req: Request, res: Response) => {
   const round = await Round.findOne({ roundId: parseInt(req.params.roundId, 10) }).lean();
-  const bets = round
-    ? await Bet.find({ roundId: round.roundId }).select('username amount cashoutMultiplier payout status slot').lean()
-    : [];
+  if (!round) return res.json({ round: null, bets: [] });
+  const bets = await Bet.find({ roundId: round.roundId }).select('username amount cashoutMultiplier payout status slot').lean();
+
+  // SECURITY: the crash point (and raw server seed) are stored the moment a round
+  // opens for betting. Never expose them for a round that hasn't crashed yet — that
+  // would let a player predict the outcome and cash out perfectly every time.
+  if (round.status !== 'crashed') {
+    const { crashPoint, serverSeed, ...safe } = round;
+    void crashPoint; void serverSeed;
+    return res.json({ round: safe, bets });
+  }
   res.json({ round, bets });
 });
 

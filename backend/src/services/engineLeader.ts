@@ -1,62 +1,44 @@
-import { redis, isRedisAvailable } from '../config/redis';
+import { redis } from '../config/redis';
 import { logger } from '../utils/logger';
 
 /**
- * Distributed single-engine guard. Only ONE process may run the authoritative
- * game loop — two concurrent engines corrupt the game (duplicate rounds, phase
- * clashes). A short-lived Redis lease with a heartbeat elects a single leader;
- * other instances serve HTTP/socket only and relay round events via the Redis
- * adapter. Without Redis it falls back to starting directly (single-instance).
+ * Single-engine guard.
+ *
+ * The process that owns the HTTP port runs the game loop — so the engine and the
+ * request/snapshot server are ALWAYS the same process (no split-brain). To kill a
+ * duplicate loop from an orphaned process (e.g. a ts-node-dev leftover on Windows
+ * that released the port but kept its timers running), the newly-started engine
+ * publishes a "takeover" claim; any older engine that hears it stands down.
+ *
+ * Without Redis, the single-port guard alone is relied upon.
  */
-const KEY = 'aviator:engine:leader';
-const TTL_MS = 15000;
-const RENEW_MS = 5000;
-let timer: NodeJS.Timeout | null = null;
-let leading = false;
+const CHANNEL = 'aviator:engine:takeover';
+let sub: ReturnType<NonNullable<typeof redis>['duplicate']> | null = null;
 
-export async function ensureSingleEngine(instanceId: string, engine: { start: () => void; stop: () => void }): Promise<void> {
-  if (!redis || !isRedisAvailable()) {
-    logger.warn('No Redis — starting engine without a distributed lock (run only ONE backend instance!)');
-    engine.start();
+export function ensureSingleEngine(instanceId: string, engine: { start: () => void; stop: () => void }): void {
+  engine.start();
+
+  if (!redis) {
+    logger.warn('No Redis — relying on the single-port guard only (run one backend instance).');
     return;
   }
-  const client = redis;
 
-  const tick = async () => {
-    try {
-      if (leading) {
-        const owner = await client.get(KEY);
-        if (owner === instanceId) {
-          await client.set(KEY, instanceId, 'PX', TTL_MS, 'XX'); // renew our lease
-        } else {
-          leading = false;
-          logger.warn('Lost engine leadership — stopping local game loop');
-          engine.stop();
-        }
-      } else {
-        const ok = await client.set(KEY, instanceId, 'PX', TTL_MS, 'NX');
-        if (ok) {
-          leading = true;
-          logger.info({ instanceId }, '👑 Acquired engine leadership — starting game loop');
-          engine.start();
-        } else {
-          logger.info('Another instance owns the engine — this process serves requests only');
-        }
-      }
-    } catch (err) {
-      logger.warn({ err }, 'engine leadership tick failed');
+  // Announce this instance as the live engine; older loops stand down on hearing it.
+  redis.publish(CHANNEL, instanceId).catch((err) => logger.warn({ err }, 'engine takeover publish failed'));
+
+  sub = redis.duplicate();
+  sub.subscribe(CHANNEL).catch((err) => logger.warn({ err }, 'engine takeover subscribe failed'));
+  sub.on('message', (_channel, id) => {
+    if (id && id !== instanceId) {
+      logger.warn({ newer: id }, 'A newer engine took over — stopping this game loop');
+      engine.stop();
+      sub?.quit().catch(() => {});
+      sub = null;
     }
-  };
-
-  await tick();
-  timer = setInterval(tick, RENEW_MS);
-  timer.unref?.();
+  });
 }
 
-export async function releaseEngineLeadership(instanceId: string): Promise<void> {
-  if (timer) { clearInterval(timer); timer = null; }
-  if (leading && redis && isRedisAvailable()) {
-    try { if ((await redis.get(KEY)) === instanceId) await redis.del(KEY); } catch { /* ignore */ }
-  }
-  leading = false;
+export async function releaseEngineLeadership(_instanceId: string): Promise<void> {
+  try { await sub?.quit(); } catch { /* ignore */ }
+  sub = null;
 }
