@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import Overview from '@/components/admin/Overview';
 import Players from '@/components/admin/Players';
@@ -23,8 +24,16 @@ type Tab = 'overview' | 'treasury' | 'players' | 'rounds' | 'alerts' | 'controls
 const sevBg = (s?: string) => (s === 'critical' ? 'bg-loss' : s === 'warning' ? 'bg-gold text-base-900' : 'bg-accent');
 
 export default function AdminPage() {
+  const router = useRouter();
   const user = useAuth((s) => s.user);
   const loading = useAuth((s) => s.loading);
+
+  // Authorization guard: redirect anyone who isn't an admin (logged-out → login, non-admin → home).
+  useEffect(() => {
+    if (loading) return;
+    if (!user) router.replace('/?auth=required');
+    else if (user.role !== 'admin') router.replace('/');
+  }, [user, loading, router]);
   const phase = useGame((s) => s.phase);
   const multiplier = useGame((s) => s.multiplier);
   const { unread, setAll, prepend, latest, clearLatest } = useAlerts();
@@ -52,11 +61,11 @@ export default function AdminPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [latest]);
 
-  if (!loading && user && user.role !== 'admin') {
+  if (loading || !user || user.role !== 'admin') {
     return (
       <div className="min-h-screen">
         <Header />
-        <p className="p-10 text-center text-loss">⛔ Admin access required.</p>
+        <p className="p-10 text-center text-white/50">{loading ? 'Loading…' : 'Redirecting…'}</p>
       </div>
     );
   }

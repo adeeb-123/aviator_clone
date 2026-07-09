@@ -31,13 +31,20 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Auto-refresh on 401 once.
+/** Send the user to a route once (guards against redirect loops / SSR). */
+function redirectTo(path: string): void {
+  if (typeof window === 'undefined') return;
+  if (window.location.pathname + window.location.search === path) return;
+  window.location.assign(path);
+}
+
+// Auto-refresh on 401 once; on hard auth failure, redirect to login.
 let refreshing = false;
 api.interceptors.response.use(
   (res) => res,
   async (error) => {
     const original = error.config;
-    if (error.response?.status === 401 && !original._retry && !refreshing) {
+    if (error.response?.status === 401 && original && !original._retry && !refreshing) {
       original._retry = true;
       refreshing = true;
       try {
@@ -47,8 +54,10 @@ api.interceptors.response.use(
         original.headers.Authorization = `Bearer ${data.accessToken}`;
         return api(original);
       } catch {
+        // Session fully expired / not authenticated → clear + bounce to login.
         refreshing = false;
         setAccessToken(null);
+        redirectTo('/?auth=required');
       }
     }
     return Promise.reject(error);
