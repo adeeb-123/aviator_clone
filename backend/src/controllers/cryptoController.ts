@@ -12,6 +12,7 @@ import { badRequest, notFound } from '../utils/errors';
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const round8 = (n: number) => Math.round((n + Number.EPSILON) * 1e8) / 1e8;
+const MAX_DEPOSIT_INR = 1_000_000; // sanity cap per deposit (₹10 lakh) — prevents absurd self-crediting
 
 /** Deterministic demo deposit address for a user+coin (looks real; no chain behind it). */
 function depositAddress(userId: string, coin: string): string {
@@ -67,6 +68,7 @@ export const deposit = asyncHandler(async (req: Request, res: Response) => {
   const rate = liveRate(coin.rate, coin.symbol);
   const inrAmount = round2(cryptoAmount * rate);
   if (inrAmount <= 0) throw badRequest('Amount too small');
+  if (inrAmount > MAX_DEPOSIT_INR) throw badRequest(`Maximum single deposit is ₹${MAX_DEPOSIT_INR.toLocaleString('en-IN')}`);
 
   const tx = await CryptoTransaction.create({
     userId: req.user!.sub, username: req.user!.username, type: 'deposit', coin: coin.symbol,

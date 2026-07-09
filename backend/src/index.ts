@@ -9,6 +9,7 @@ import { initGameEngine } from './services/gameEngine';
 import { loadConfig } from './services/runtimeConfig';
 import { loadJackpot } from './services/jackpotService';
 import { startMarket } from './services/marketService';
+import { ensureSingleEngine, releaseEngineLeadership } from './services/engineLeader';
 import { sweepPendingDeposits } from './controllers/cryptoController';
 import { initAlerts } from './services/alertService';
 import { setupSocket } from './socket';
@@ -86,14 +87,17 @@ export async function bootstrap(): Promise<void> {
     process.exit(1);
   });
 
+  const instanceId = crypto.randomUUID();
   server.listen(env.port, () => {
     logger.info(`🚀 Backend listening on :${env.port} (${env.nodeEnv})`);
-    // Start the game loop ONLY after we own the port (single authoritative engine).
-    engine.start();
+    // Start the game loop ONLY after we own the port AND win the distributed
+    // leader lock — belt-and-suspenders against duplicate engines corrupting rounds.
+    void ensureSingleEngine(instanceId, engine);
   });
 
   const shutdown = async (signal: string) => {
     logger.info(`${signal} received, shutting down...`);
+    await releaseEngineLeadership(instanceId);
     engine.stop();
     io.close();
     server.close(() => process.exit(0));
