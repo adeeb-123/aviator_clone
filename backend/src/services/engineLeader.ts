@@ -1,47 +1,21 @@
-import { redis } from '../config/redis';
 import { logger } from '../utils/logger';
 
 /**
  * Single-engine guard.
  *
- * The process that owns the HTTP port runs the game loop — so the engine and the
- * request/snapshot server are ALWAYS the same process (no split-brain). To kill a
- * duplicate loop from an orphaned process (e.g. a ts-node-dev leftover on Windows
- * that released the port but kept its timers running), the newly-started engine
- * publishes a "takeover" claim; any older engine that hears it stands down.
- *
- * Without Redis, the single-port guard alone is relied upon.
+ * The process that owns the HTTP port runs the game loop (engine.start() is called
+ * from the listen callback, and a second process on the same host exits on
+ * EADDRINUSE before it ever starts an engine). We deliberately do NOT use a Redis
+ * lease/takeover here: earlier attempts could stop the *live* engine mid-round on a
+ * ts-node-dev respawn and freeze the game. Instead the engine is self-healing —
+ * duplicate-round detection makes a stray loop yield, and a watchdog force-crashes
+ * any round that runs too long (see gameEngine).
  */
-const CHANNEL = 'aviator:engine:takeover';
-let sub: ReturnType<NonNullable<typeof redis>['duplicate']> | null = null;
-
-export function ensureSingleEngine(instanceId: string, engine: { start: () => void; stop: () => void }): void {
+export function ensureSingleEngine(_instanceId: string, engine: { start: () => void; stop: () => void }): void {
   engine.start();
-
-  if (!redis) {
-    logger.warn('No Redis — relying on the single-port guard only (run one backend instance).');
-    return;
-  }
-
-  // Announce this instance as the live engine; older loops stand down on hearing it.
-  redis.publish(CHANNEL, instanceId).catch((err) => logger.warn({ err }, 'engine takeover publish failed'));
-
-  sub = redis.duplicate();
-  // Must have an 'error' listener — an unhandled Redis 'error' event (e.g. a DNS
-  // blip to Redis Cloud) would otherwise crash the whole process.
-  sub.on('error', (err) => logger.warn({ err: (err as Error).message }, 'engine takeover redis error'));
-  sub.subscribe(CHANNEL).catch((err) => logger.warn({ err }, 'engine takeover subscribe failed'));
-  sub.on('message', (_channel, id) => {
-    if (id && id !== instanceId) {
-      logger.warn({ newer: id }, 'A newer engine took over — stopping this game loop');
-      engine.stop();
-      sub?.quit().catch(() => {});
-      sub = null;
-    }
-  });
+  logger.info('GameEngine started (single-port guard)');
 }
 
 export async function releaseEngineLeadership(_instanceId: string): Promise<void> {
-  try { await sub?.quit(); } catch { /* ignore */ }
-  sub = null;
+  /* no-op — nothing held externally */
 }

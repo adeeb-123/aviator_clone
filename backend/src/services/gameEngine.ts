@@ -48,7 +48,14 @@ export class GameEngine {
   private sideBets: { id: string; userId: string; username: string; marketId: string; threshold: number; payout: number; amount: number }[] = [];
   private tickTimer?: NodeJS.Timeout;
   private phaseTimer?: NodeJS.Timeout;
+  private runawayTimer?: NodeJS.Timeout; // watchdog: force-crash a round that never ends
   private running = false;
+
+  // Hard cap on multiplier (crash points are capped at 1e6). Guards the display and
+  // ensures a stuck round can never show an absurd value.
+  private static MAX_MULTIPLIER = 1_100_000;
+  // A running round should crash by ~153s (max crash 1e6). Anything longer is stuck.
+  private static MAX_RUNNING_MS = 175_000;
 
   /** Admin override: FIFO queue of forced crash points, applied to successive rounds. */
   private forcedCrashQueue: number[] = [];
@@ -66,6 +73,20 @@ export class GameEngine {
   /** Broadcast an arbitrary event to all sockets (used by admin moderation/broadcast). */
   emit(event: string, payload: unknown): void {
     this.io.emit(event, payload);
+  }
+
+  /**
+   * Coalesce players:update broadcasts. Emitting the full bet list on every single
+   * bet is O(N²) per round; under heavy load (100+ bettors) that floods the event
+   * loop. Debounce to at most ~4/sec — the live-bets list stays plenty responsive.
+   */
+  private playersUpdateTimer?: NodeJS.Timeout;
+  private schedulePlayersUpdate(): void {
+    if (this.playersUpdateTimer) return;
+    this.playersUpdateTimer = setTimeout(() => {
+      this.playersUpdateTimer = undefined;
+      this.io.emit(EVENTS.PLAYERS_UPDATE, this.publicBets());
+    }, 250);
   }
 
   /** Emit a private event to one user's room (e.g. a balance update). */
@@ -138,7 +159,7 @@ export class GameEngine {
 
   /** Replace the queue (used by drag-to-reorder in the admin panel). */
   setForcedCrashQueue(values: number[]): void {
-    this.forcedCrashQueue = (values ?? []).filter((v) => typeof v === 'number' && Number.isFinite(v) && v >= 1).map((v) => Math.max(1, v));
+    this.forcedCrashQueue = (values ?? []).filter((v) => typeof v === 'number' && Number.isFinite(v) && v >= 1).map((v) => Math.min(1_000_000, Math.max(1, v)));
   }
 
   // ── lifecycle control ────────────────────────────────────
@@ -153,6 +174,10 @@ export class GameEngine {
     this.running = false;
     if (this.tickTimer) clearInterval(this.tickTimer);
     if (this.phaseTimer) clearTimeout(this.phaseTimer);
+    if (this.runawayTimer) clearTimeout(this.runawayTimer);
+    // Never leave the engine in 'running' — otherwise getMultiplierNow() keeps
+    // computing e^(0.09·t) forever and the snapshot shows a runaway multiplier.
+    if (this.phase === 'running' || this.phase === 'betting') this.phase = 'crashed';
     logger.info('GameEngine stopped');
   }
 
@@ -162,8 +187,10 @@ export class GameEngine {
 
   /** Append a forced crash point to the queue (applied FIFO to upcoming rounds). */
   forceCrashPoint(value: number): void {
-    this.forcedCrashQueue.push(Math.max(1, value));
-    logger.warn({ value, queued: this.forcedCrashQueue.length }, 'Admin queued a forced crash point');
+    if (!Number.isFinite(value)) return;
+    const clamped = Math.min(1_000_000, Math.max(1, value));
+    this.forcedCrashQueue.push(clamped);
+    logger.warn({ value: clamped, queued: this.forcedCrashQueue.length }, 'Admin queued a forced crash point');
   }
 
   // ── round phases ─────────────────────────────────────────
@@ -182,6 +209,9 @@ export class GameEngine {
       // Consume the next queued forced crash (FIFO), else compute provably-fair.
       const forced = this.forcedCrashQueue.shift();
       this.crashPoint = forced ?? computeCrashPoint(seed.seed, this.clientSeed, this.nonce);
+      // Never let a bad crash point (NaN/Infinity/<1) stall the round forever.
+      if (!Number.isFinite(this.crashPoint) || this.crashPoint < 1) this.crashPoint = 1;
+      else this.crashPoint = Math.min(this.crashPoint, 1_000_000);
       this.activeForcedCrash = forced ?? null; // what's being applied to THIS round
 
       const last = await Round.findOne().sort({ roundId: -1 }).select('roundId').lean();
@@ -219,6 +249,13 @@ export class GameEngine {
 
       this.phaseTimer = setTimeout(() => void this.beginRunning(), bettingWindowMs);
     } catch (err) {
+      // Duplicate roundId → another engine already created this round (a stray
+      // ts-node-dev orphan loop). Yield so we never run two loops in parallel.
+      if ((err as { code?: number })?.code === 11000) {
+        logger.warn('Duplicate round id — another engine owns the sequence; stopping this loop');
+        this.stop();
+        return;
+      }
       logger.error({ err }, 'beginBetting failed; retrying');
       this.phaseTimer = setTimeout(() => void this.beginBetting(), 3000);
     }
@@ -233,6 +270,14 @@ export class GameEngine {
     this.io.emit(EVENTS.ROUND_RUNNING, { roundId: this.roundId });
 
     this.tickTimer = setInterval(() => this.tick(), env.game.tickMs);
+    // Watchdog: if a round somehow never crashes (bad crash point, a stalled tick,
+    // a clock issue), force it to end so the game can never freeze.
+    this.runawayTimer = setTimeout(() => {
+      if (this.phase === 'running') {
+        logger.warn({ roundId: this.roundId, crashPoint: this.crashPoint }, 'Watchdog: round stuck running — forcing crash');
+        void this.crash();
+      }
+    }, GameEngine.MAX_RUNNING_MS);
   }
 
   private tick(): void {
@@ -266,6 +311,7 @@ export class GameEngine {
     if (this.phase !== 'running') return; // idempotent — may be triggered by a tick or a late cashout
     this.phase = 'crashed';
     if (this.tickTimer) clearInterval(this.tickTimer);
+    if (this.runawayTimer) clearTimeout(this.runawayTimer);
 
     // Any still-pending stake loses. A partially-cashed bet keeps what it already
     // banked (bet.payout) — it counts as cashed-out; a fully-pending bet loses all.
@@ -404,7 +450,7 @@ export class GameEngine {
       status: 'pending',
     };
     this.io.emit(EVENTS.BET_PLACED, publicBet);
-    this.io.emit(EVENTS.PLAYERS_UPDATE, this.publicBets());
+    this.schedulePlayersUpdate();
 
     alertLargeBet({ userId: params.userId, username: params.username, amount, roundId: this.roundId });
 
@@ -522,7 +568,7 @@ export class GameEngine {
       payout: partPayout,
     });
     this.io.to(`user:${bet.userId}`).emit(EVENTS.BALANCE_UPDATE, { balance });
-    this.io.emit(EVENTS.PLAYERS_UPDATE, this.publicBets());
+    this.schedulePlayersUpdate();
 
     if (bet.status === 'cashed-out') {
       alertBigWin({ userId: bet.userId, username: bet.username, amount: bet.amount, multiplier, payout: bet.payout, roundId: this.roundId });
@@ -543,9 +589,9 @@ export class GameEngine {
 
   // ── helpers ──────────────────────────────────────────────
   private computeMultiplier(elapsedMs: number): number {
-    const sec = elapsedMs / 1000;
+    const sec = Math.max(0, elapsedMs) / 1000;
     const m = Math.pow(Math.E, GameEngine.GROWTH_RATE * sec);
-    return Math.max(1, Math.floor(m * 100) / 100);
+    return Math.min(GameEngine.MAX_MULTIPLIER, Math.max(1, Math.floor(m * 100) / 100));
   }
 
   private publicBets(): PublicBet[] {
