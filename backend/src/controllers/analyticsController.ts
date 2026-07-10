@@ -220,8 +220,16 @@ export const players = asyncHandler(async (req: Request, res: Response) => {
   const sort = String(req.query.sort ?? 'housePL');
   const dir = req.query.dir === 'asc' ? 1 : -1;
   const q = String(req.query.q ?? '').trim();
+  const active = String(req.query.active ?? 'all'); // all|today|week|month|inactive
+  const status = String(req.query.status ?? 'all'); // all|active|banned|muted
+  const role = String(req.query.role ?? 'all'); // all|user|admin
+  const segment = String(req.query.segment ?? 'all'); // all|whales|new|winning
   const limit = Math.min(200, Math.max(10, parseInt(String(req.query.limit ?? '50'), 10)));
   const page = Math.max(1, parseInt(String(req.query.page ?? '1'), 10));
+
+  const now = Date.now();
+  const DAY = 864e5;
+  const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
 
   const [betsByUser, txByUser, userDocs] = await Promise.all([
     Bet.aggregate([
@@ -247,7 +255,7 @@ export const players = asyncHandler(async (req: Request, res: Response) => {
       },
     ]),
     User.find(q ? { $or: [{ username: new RegExp(q, 'i') }, { email: new RegExp(q, 'i') }] } : {})
-      .select('username email balance role isBanned vipTier lastActiveAt createdAt')
+      .select('username email avatar balance role isBanned isSuspended chatMutedUntil vipTier lastActiveAt createdAt')
       .lean(),
   ]);
 
@@ -259,12 +267,17 @@ export const players = asyncHandler(async (req: Request, res: Response) => {
     const t = txMap.get(String(u._id)) ?? { deposits: 0, withdrawals: 0 };
     const wagered = round2(b.wagered);
     const won = round2(b.won);
+    const muted = !!(u.chatMutedUntil && new Date(u.chatMutedUntil).getTime() > now);
     return {
       userId: String(u._id),
       username: u.username,
       email: u.email,
+      avatar: u.avatar,
       role: u.role,
       isBanned: u.isBanned,
+      isSuspended: u.isSuspended,
+      muted,
+      isNew: u.createdAt ? (now - new Date(u.createdAt).getTime()) < 7 * DAY : false,
       vipTier: u.vipTier,
       balance: round2(u.balance),
       lastActiveAt: u.lastActiveAt,
@@ -283,7 +296,39 @@ export const players = asyncHandler(async (req: Request, res: Response) => {
     };
   });
 
-  const sortable = new Set(['housePL', 'playerPL', 'wagered', 'won', 'bets', 'balance', 'deposits', 'withdrawals', 'winRate', 'lastActiveAt']);
+  // Summary reflects the whole (q-matched) base — computed BEFORE the tab filters.
+  const lastActiveMs = (r: { lastActiveAt?: Date | null }) => (r.lastActiveAt ? new Date(r.lastActiveAt).getTime() : 0);
+  const summary = {
+    totalPlayers: rows.length,
+    activeToday: rows.filter((r) => lastActiveMs(r) >= startOfToday.getTime()).length,
+    active7d: rows.filter((r) => lastActiveMs(r) >= now - 7 * DAY).length,
+    new7d: rows.filter((r) => r.isNew).length,
+    banned: rows.filter((r) => r.isBanned).length,
+    muted: rows.filter((r) => r.muted).length,
+    totalBalance: round2(rows.reduce((s, r) => s + r.balance, 0)),
+    totalWagered: round2(rows.reduce((s, r) => s + r.wagered, 0)),
+    houseProfit: round2(rows.reduce((s, r) => s + r.housePL, 0)),
+    winningPlayers: rows.filter((r) => r.playerPL > 0).length, // players ahead of the house
+  };
+
+  // ── tab filters ──
+  if (active !== 'all') {
+    rows = rows.filter((r) => {
+      const ms = lastActiveMs(r);
+      if (active === 'today') return ms >= startOfToday.getTime();
+      if (active === 'week') return ms >= now - 7 * DAY;
+      if (active === 'month') return ms >= now - 30 * DAY;
+      if (active === 'inactive') return ms > 0 && ms < now - 30 * DAY; // no activity for 30+ days
+      return true;
+    });
+  }
+  if (status !== 'all') rows = rows.filter((r) => (status === 'banned' ? r.isBanned : status === 'muted' ? r.muted : !r.isBanned && !r.muted));
+  if (role !== 'all') rows = rows.filter((r) => r.role === role);
+  if (segment !== 'all') {
+    rows = rows.filter((r) => (segment === 'whales' ? r.wagered >= 10000 : segment === 'new' ? r.isNew : segment === 'winning' ? r.playerPL > 0 : true));
+  }
+
+  const sortable = new Set(['housePL', 'playerPL', 'wagered', 'won', 'bets', 'balance', 'deposits', 'withdrawals', 'winRate', 'lastActiveAt', 'createdAt']);
   const key = sortable.has(sort) ? sort : 'housePL';
   rows.sort((a, b) => {
     const av = (a as Record<string, unknown>)[key];
@@ -294,7 +339,7 @@ export const players = asyncHandler(async (req: Request, res: Response) => {
 
   const total = rows.length;
   const paged = rows.slice((page - 1) * limit, page * limit);
-  res.json({ players: paged, total, page, pages: Math.ceil(total / limit) });
+  res.json({ players: paged, total, page, pages: Math.ceil(total / limit), summary });
 });
 
 /**
