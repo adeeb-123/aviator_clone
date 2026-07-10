@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { User } from '../models/User';
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../utils/jwt';
 import { adjustBalance } from '../services/ledger';
+import { getGameEngine } from '../services/gameEngine';
 import { env } from '../config/env';
 import { badRequest, conflict, unauthorized, forbidden } from '../utils/errors';
 import { asyncHandler } from '../middleware/error';
@@ -32,7 +33,11 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
   const existing = await User.findOne({ $or: [{ email }, { username }] });
   if (existing) throw conflict('Email or username already taken');
 
-  const referrer = referralCode ? await User.findOne({ referralCode }) : null;
+  // Referral codes are lowercase hex — match case-insensitively so a code typed in
+  // any case (or with stray spaces) still resolves.
+  const cleanRef = typeof referralCode === 'string' ? referralCode.trim().toLowerCase() : '';
+  const referrer = cleanRef ? await User.findOne({ referralCode: cleanRef }) : null;
+  if (cleanRef && !referrer) throw badRequest('That referral code is not valid');
 
   const user = new User({
     username,
@@ -63,7 +68,16 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
   }
   user.balance = newBalance; // reflect credited balance in the response
   if (referrer && env.game.referralBonus > 0) {
-    await adjustBalance({ userId: referrer._id, amount: env.game.referralBonus, type: 'bonus', description: `Referral: ${username}` });
+    const refBalance = await adjustBalance({ userId: referrer._id, amount: env.game.referralBonus, type: 'bonus', description: `Referral: ${username}` });
+    // Let the referrer see it immediately if they're online.
+    try {
+      const eng = getGameEngine();
+      eng.emitToUser(String(referrer._id), 'balance:update', { balance: refBalance });
+      eng.emitToUser(String(referrer._id), 'user:notify', {
+        id: crypto.randomUUID(), kind: 'success', title: 'Referral bonus! 🎉',
+        message: `${username} just joined with your code — you earned ₹${env.game.referralBonus}.`, createdAt: new Date(),
+      });
+    } catch { /* engine not ready — non-fatal */ }
   }
 
   res.cookie(REFRESH_COOKIE, refreshToken, refreshCookieOpts);

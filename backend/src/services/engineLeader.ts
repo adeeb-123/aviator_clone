@@ -27,6 +27,9 @@ export function ensureSingleEngine(instanceId: string, engine: { start: () => vo
   redis.publish(CHANNEL, instanceId).catch((err) => logger.warn({ err }, 'engine takeover publish failed'));
 
   sub = redis.duplicate();
+  // Must have an 'error' listener — an unhandled Redis 'error' event (e.g. a DNS
+  // blip to Redis Cloud) would otherwise crash the whole process.
+  sub.on('error', (err) => logger.warn({ err: (err as Error).message }, 'engine takeover redis error'));
   sub.subscribe(CHANNEL).catch((err) => logger.warn({ err }, 'engine takeover subscribe failed'));
   sub.on('message', (_channel, id) => {
     if (id && id !== instanceId) {

@@ -142,7 +142,11 @@ export default function AuthModal({ open, onClose }: Props) {
               />
             )}
 
-            {error && <p className="mb-2 text-sm text-loss">{error}</p>}
+            {error && (
+              <div className="mb-2 flex items-start gap-2 rounded-lg border border-loss/40 bg-loss/15 px-3 py-2 text-sm text-loss">
+                <span className="shrink-0">⚠️</span><span>{error}</span>
+              </div>
+            )}
 
             <button className="btn-primary mt-2 w-full" onClick={() => void submit()} disabled={busy}>
               {busy ? 'Please wait…' : mode === 'login' ? 'Login' : 'Create account'}

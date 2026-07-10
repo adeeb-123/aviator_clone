@@ -10,7 +10,12 @@ export function notFoundHandler(_req: Request, res: Response): void {
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction): void {
   if (err instanceof ZodError) {
-    res.status(400).json({ error: 'Validation failed', details: err.flatten().fieldErrors });
+    const flat = err.flatten();
+    // Surface the first concrete field message so clients can show something useful
+    // (e.g. "Password must be at least 8 characters") instead of a generic error.
+    const firstField = Object.values(flat.fieldErrors).find((m) => Array.isArray(m) && m.length);
+    const message = (firstField && firstField[0]) || flat.formErrors[0] || 'Please check the highlighted fields';
+    res.status(400).json({ error: message, details: flat.fieldErrors });
     return;
   }
   if (err instanceof AppError) {
