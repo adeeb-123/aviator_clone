@@ -43,7 +43,10 @@ export default function PlayerDetail({ userId, onClose, onChanged }: Props) {
           <>
             <div className="mb-4 flex items-start justify-between">
               <div>
-                <h2 className="text-xl font-black">{u.username} {u.role === 'admin' && <span className="text-xs text-gold">ADMIN</span>}</h2>
+                <h2 className="flex items-center gap-2 text-xl font-black">
+                  {u.username} {u.role === 'admin' && <span className="text-xs text-gold">ADMIN</span>}
+                  {data.online ? <span className="rounded-full bg-win/20 px-2 py-0.5 text-[10px] font-bold text-win">🟢 Online</span> : <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-white/40">Offline</span>}
+                </h2>
                 <p className="text-sm text-white/40">{u.email}</p>
                 <p className="mt-1 text-xs text-white/30">Joined {dt(u.createdAt)} · Last active {dt(u.lastActiveAt)} · VIP {u.vipTier ?? 0}</p>
               </div>
@@ -64,6 +67,9 @@ export default function PlayerDetail({ userId, onClose, onChanged }: Props) {
               <Stat label="Biggest bet" value={inr(s.biggestBet)} />
               <Stat label="Deposits" value={inr(s.deposits)} tone="text-win" />
               <Stat label="Withdrawals" value={inr(s.withdrawals)} tone="text-loss" />
+              <Stat label="Net deposit" value={inr(s.netDeposit ?? 0)} tone={(s.netDeposit ?? 0) >= 0 ? 'text-win' : 'text-loss'} />
+              <Stat label="Biggest withdrawal" value={inr(s.biggestWithdrawal ?? 0)} />
+              {(s.cryptoPending ?? 0) > 0 && <Stat label="Crypto pending" value={inr(s.cryptoPending)} tone="text-gold" />}
             </div>
 
             {/* actions */}
@@ -109,6 +115,23 @@ export default function PlayerDetail({ userId, onClose, onChanged }: Props) {
                 </div>
               </div>
             </div>
+
+            {/* crypto activity */}
+            {data.cryptoTxs && data.cryptoTxs.length > 0 && (
+              <div className="mt-5">
+                <h4 className="mb-2 text-sm font-semibold text-white/70">🪙 Crypto activity</h4>
+                <div className="max-h-48 space-y-1 overflow-y-auto text-xs">
+                  {data.cryptoTxs.map((c: any) => (
+                    <div key={c._id} className="flex items-center gap-2 rounded bg-base-700/40 px-2 py-1.5">
+                      <span className={c.type === 'deposit' ? 'text-win' : 'text-loss'}>{c.type === 'deposit' ? '⬇' : '⬆'} {c.cryptoAmount} {c.coin}</span>
+                      <span className="text-white/40">{inr(c.inrAmount)}</span>
+                      <span className="ml-auto font-mono text-[10px] text-white/30">{String(c.address).slice(0, 10)}…</span>
+                      <span className={`w-16 text-right capitalize ${c.status === 'completed' || c.status === 'confirmed' ? 'text-win' : c.status === 'pending' ? 'text-gold' : 'text-loss'}`}>{c.status}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>

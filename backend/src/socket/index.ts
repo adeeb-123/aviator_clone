@@ -35,6 +35,12 @@ const RATE: Record<string, { max: number; windowMs: number }> = {
 };
 
 const REACTIONS = ['👍', '❤️', '😂', '🔥', '😮', '💰'];
+
+// ── live presence: userId → open socket count (multiple tabs) ──
+const online = new Map<string, number>();
+export const onlineUserIds = (): string[] => [...online.keys()];
+export const onlineCount = (): number => online.size;
+export const isOnline = (userId: string): boolean => online.has(userId);
 function rateLimited(socket: Socket, action: string): boolean {
   const cfg = RATE[action];
   if (!cfg) return false;
@@ -82,6 +88,8 @@ export async function setupSocket(io: Server): Promise<void> {
     if (socket.authUser) {
       socket.join(`user:${socket.authUser.id}`);
       if (socket.authUser.role === 'admin') socket.join('admins'); // receives admin:alert events
+      const uid = socket.authUser.id;
+      online.set(uid, (online.get(uid) ?? 0) + 1);
     }
 
     socket.on(EVENTS.PLACE_BET, async (data, ack) => {
@@ -191,7 +199,11 @@ export async function setupSocket(io: Server): Promise<void> {
     });
 
     socket.on('disconnect', () => {
-      /* presence cleanup handled by socket.io rooms */
+      if (socket.authUser) {
+        const uid = socket.authUser.id;
+        const n = (online.get(uid) ?? 1) - 1;
+        if (n <= 0) online.delete(uid); else online.set(uid, n);
+      }
     });
   });
 

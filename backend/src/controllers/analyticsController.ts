@@ -4,7 +4,9 @@ import { User } from '../models/User';
 import { Bet } from '../models/Bet';
 import { Round } from '../models/Round';
 import { Transaction } from '../models/Transaction';
+import { CryptoTransaction } from '../models/CryptoTransaction';
 import { getGameEngine } from '../services/gameEngine';
+import { isOnline, onlineCount } from '../socket/index';
 import { computeCrashPoint } from '../utils/provablyFair';
 import { asyncHandler } from '../middleware/error';
 import { notFound } from '../utils/errors';
@@ -274,6 +276,7 @@ export const players = asyncHandler(async (req: Request, res: Response) => {
       email: u.email,
       avatar: u.avatar,
       role: u.role,
+      online: isOnline(String(u._id)),
       isBanned: u.isBanned,
       isSuspended: u.isSuspended,
       muted,
@@ -296,20 +299,27 @@ export const players = asyncHandler(async (req: Request, res: Response) => {
     };
   });
 
-  // Summary reflects the whole (q-matched) base — computed BEFORE the tab filters.
+  // Admins are the house/operator (they can't bet) — never counted as players.
+  const playerRows = rows.filter((r) => r.role !== 'admin');
+
+  // Summary reflects the whole player base — computed BEFORE the tab filters.
   const lastActiveMs = (r: { lastActiveAt?: Date | null }) => (r.lastActiveAt ? new Date(r.lastActiveAt).getTime() : 0);
   const summary = {
-    totalPlayers: rows.length,
-    activeToday: rows.filter((r) => lastActiveMs(r) >= startOfToday.getTime()).length,
-    active7d: rows.filter((r) => lastActiveMs(r) >= now - 7 * DAY).length,
-    new7d: rows.filter((r) => r.isNew).length,
-    banned: rows.filter((r) => r.isBanned).length,
-    muted: rows.filter((r) => r.muted).length,
-    totalBalance: round2(rows.reduce((s, r) => s + r.balance, 0)),
-    totalWagered: round2(rows.reduce((s, r) => s + r.wagered, 0)),
-    houseProfit: round2(rows.reduce((s, r) => s + r.housePL, 0)),
-    winningPlayers: rows.filter((r) => r.playerPL > 0).length, // players ahead of the house
+    totalPlayers: playerRows.length,
+    onlineNow: playerRows.filter((r) => r.online).length,
+    activeToday: playerRows.filter((r) => lastActiveMs(r) >= startOfToday.getTime()).length,
+    active7d: playerRows.filter((r) => lastActiveMs(r) >= now - 7 * DAY).length,
+    new7d: playerRows.filter((r) => r.isNew).length,
+    banned: playerRows.filter((r) => r.isBanned).length,
+    muted: playerRows.filter((r) => r.muted).length,
+    totalBalance: round2(playerRows.reduce((s, r) => s + r.balance, 0)),
+    totalWagered: round2(playerRows.reduce((s, r) => s + r.wagered, 0)),
+    houseProfit: round2(playerRows.reduce((s, r) => s + r.housePL, 0)),
+    winningPlayers: playerRows.filter((r) => r.playerPL > 0).length, // players ahead of the house
   };
+
+  // Role scope: 'admin' → operator accounts only; anything else → players only.
+  rows = role === 'admin' ? rows.filter((r) => r.role === 'admin') : playerRows;
 
   // ── tab filters ──
   if (active !== 'all') {
@@ -323,7 +333,6 @@ export const players = asyncHandler(async (req: Request, res: Response) => {
     });
   }
   if (status !== 'all') rows = rows.filter((r) => (status === 'banned' ? r.isBanned : status === 'muted' ? r.muted : !r.isBanned && !r.muted));
-  if (role !== 'all') rows = rows.filter((r) => r.role === role);
   if (segment !== 'all') {
     rows = rows.filter((r) => (segment === 'whales' ? r.wagered >= 10000 : segment === 'new' ? r.isNew : segment === 'winning' ? r.playerPL > 0 : true));
   }
@@ -339,7 +348,7 @@ export const players = asyncHandler(async (req: Request, res: Response) => {
 
   const total = rows.length;
   const paged = rows.slice((page - 1) * limit, page * limit);
-  res.json({ players: paged, total, page, pages: Math.ceil(total / limit), summary });
+  res.json({ players: paged, total, page, pages: Math.ceil(total / limit), summary, onlineTotal: onlineCount() });
 });
 
 /**
@@ -375,6 +384,8 @@ export const playerDetail = asyncHandler(async (req: Request, res: Response) => 
           _id: '$type',
           count: { $sum: 1 },
           sum: { $sum: '$amount' },
+          min: { $min: '$amount' }, // most-negative = biggest single withdrawal
+          max: { $max: '$amount' }, // biggest single credit
         },
       },
     ]),
@@ -382,12 +393,24 @@ export const playerDetail = asyncHandler(async (req: Request, res: Response) => 
     Transaction.find({ userId: oid }).sort({ createdAt: -1 }).limit(25).select('type amount balanceAfter description createdAt').lean(),
   ]);
 
+  const [cryptoTxs, cryptoAgg] = await Promise.all([
+    CryptoTransaction.find({ userId: oid }).sort({ createdAt: -1 }).limit(20).select('type coin cryptoAmount inrAmount status address txHash createdAt').lean(),
+    CryptoTransaction.aggregate([
+      { $match: { userId: oid } },
+      { $group: { _id: { type: '$type', status: '$status' }, count: { $sum: 1 }, inr: { $sum: '$inrAmount' } } },
+    ]),
+  ]);
+
   const b = betAgg[0] ?? { wagered: 0, won: 0, bets: 0, wins: 0, losses: 0, best: 0, avgBet: 0, biggestBet: 0 };
-  const txByType: Record<string, { count: number; sum: number }> = {};
-  for (const t of txAgg) txByType[t._id] = { count: t.count, sum: round2(t.sum) };
+  const txByType: Record<string, { count: number; sum: number; min: number; max: number }> = {};
+  for (const t of txAgg) txByType[t._id] = { count: t.count, sum: round2(t.sum), min: round2(t.min), max: round2(t.max) };
+  const cryptoPending = cryptoAgg.filter((c) => c._id.type === 'withdrawal' && c._id.status === 'pending').reduce((s, c) => s + c.inr, 0);
+  const deposits = txByType.deposit?.sum ?? 0;
+  const withdrawals = Math.abs(txByType.withdraw?.sum ?? 0);
 
   res.json({
     user: { ...user, passwordHash: undefined, refreshTokenId: undefined },
+    online: isOnline(userId),
     stats: {
       wagered: round2(b.wagered),
       won: round2(b.won),
@@ -400,11 +423,67 @@ export const playerDetail = asyncHandler(async (req: Request, res: Response) => 
       bestMultiplier: round2(b.best ?? 0),
       avgBet: round2(b.avgBet ?? 0),
       biggestBet: round2(b.biggestBet ?? 0),
-      deposits: txByType.deposit?.sum ?? 0,
-      withdrawals: Math.abs(txByType.withdraw?.sum ?? 0),
+      deposits,
+      withdrawals,
+      netDeposit: round2(deposits - withdrawals), // real money the player has put in net
+      biggestWithdrawal: Math.abs(txByType.withdraw?.min ?? 0),
       bonuses: txByType.bonus?.sum ?? 0,
+      cryptoPending: round2(cryptoPending),
     },
+    cryptoTxs,
     recentBets,
     recentTransactions: recentTx,
+  });
+});
+
+/** GET /admin/analytics/retention — signups over time + D1/D7 cohort retention. */
+export const retention = asyncHandler(async (_req: Request, res: Response) => {
+  const now = Date.now();
+  const DAY = 864e5;
+  const r0 = (n: number) => Math.round(n);
+  const dayStr = (t: number) => new Date(t).toISOString().slice(0, 10);
+
+  // signups per day (last 30 days, players only), gap-filled
+  const raw = await User.aggregate([
+    { $match: { role: { $ne: 'admin' }, createdAt: { $gte: new Date(now - 30 * DAY) } } },
+    { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }, count: { $sum: 1 } } },
+  ]);
+  const byDay = new Map(raw.map((d) => [d._id, d.count]));
+  const signups: { date: string; count: number }[] = [];
+  for (let i = 29; i >= 0; i--) {
+    const key = dayStr(now - i * DAY);
+    signups.push({ date: key.slice(5), count: byDay.get(key) ?? 0 });
+  }
+
+  // cohort retention: players who signed up in the last 60 days
+  const cohort = await User.find({ role: { $ne: 'admin' }, createdAt: { $gte: new Date(now - 60 * DAY) } }).select('_id createdAt').lean();
+  const ids = cohort.map((u) => u._id);
+  const betDays = await Bet.aggregate([
+    { $match: { userId: { $in: ids } } },
+    { $group: { _id: '$userId', days: { $addToSet: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } } } } },
+  ]);
+  const dayMap = new Map(betDays.map((b) => [String(b._id), new Set<string>(b.days)]));
+
+  let d1 = 0, d7 = 0, elig1 = 0, elig7 = 0;
+  for (const u of cohort) {
+    const created = new Date(u.createdAt).getTime();
+    const days = dayMap.get(String(u._id)) ?? new Set<string>();
+    if (now - created >= DAY) { elig1++; if (days.has(dayStr(created + DAY))) d1++; }
+    if (now - created >= 7 * DAY) {
+      elig7++;
+      for (let k = 1; k <= 7; k++) { if (days.has(dayStr(created + k * DAY))) { d7++; break; } }
+    }
+  }
+
+  res.json({
+    signups,
+    newLast7: signups.slice(-7).reduce((s, d) => s + d.count, 0),
+    newLast30: signups.reduce((s, d) => s + d.count, 0),
+    retention: {
+      d1: elig1 ? r0((d1 / elig1) * 100) : 0,
+      d7: elig7 ? r0((d7 / elig7) * 100) : 0,
+      cohort1: elig1,
+      cohort7: elig7,
+    },
   });
 });

@@ -20,6 +20,7 @@ router.get('/analytics/overview', analytics.overview);
 router.get('/analytics/timeseries', analytics.timeseries);
 router.get('/analytics/rounds', analytics.rounds);
 router.get('/analytics/players', analytics.players);
+router.get('/analytics/retention', analytics.retention);
 router.get('/analytics/players/:userId', analytics.playerDetail);
 
 // ── alerts ──

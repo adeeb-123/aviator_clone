@@ -7,15 +7,16 @@ import { useAutoRefresh } from '@/lib/useAutoRefresh';
 import { downloadCSV } from '@/lib/csv';
 import RefreshBar from './RefreshBar';
 import PlayerDetail from './PlayerDetail';
+import Retention from './Retention';
 
 interface Row {
-  userId: string; username: string; email: string; avatar?: string; role: string;
+  userId: string; username: string; email: string; avatar?: string; role: string; online: boolean;
   isBanned: boolean; isSuspended: boolean; muted: boolean; isNew: boolean; balance: number;
   wagered: number; won: number; playerPL: number; housePL: number; bets: number; wins: number; winRate: number;
   bestMultiplier: number; deposits: number; withdrawals: number; lastActiveAt: string; createdAt: string;
 }
 interface Summary {
-  totalPlayers: number; activeToday: number; active7d: number; new7d: number; banned: number; muted: number;
+  totalPlayers: number; onlineNow: number; activeToday: number; active7d: number; new7d: number; banned: number; muted: number;
   totalBalance: number; totalWagered: number; houseProfit: number; winningPlayers: number;
 }
 
@@ -48,7 +49,7 @@ const recencyTone = (d?: string) => {
 const FILTERS = {
   active: [['all', 'Any activity'], ['today', 'Active today'], ['week', 'Active this week'], ['month', 'Active this month'], ['inactive', 'Inactive 30d+']],
   status: [['all', 'All statuses'], ['active', 'Active'], ['banned', 'Banned'], ['muted', 'Muted']],
-  role: [['all', 'All roles'], ['user', 'Players'], ['admin', 'Admins']],
+  role: [['user', '👤 Players'], ['admin', '🛡️ Admins (house)']],
   segment: [['all', 'All players'], ['whales', '🐋 Whales (₹10k+ wagered)'], ['new', '✨ New (7d)'], ['winning', '⚠️ Ahead of house']],
 } as const;
 
@@ -58,7 +59,7 @@ export default function Players() {
   const [q, setQ] = useState('');
   const [active, setActive] = useState('all');
   const [status, setStatus] = useState('all');
-  const [role, setRole] = useState('all');
+  const [role, setRole] = useState('user');
   const [segment, setSegment] = useState('all');
   const [sort, setSort] = useState('lastActiveAt');
   const [dir, setDir] = useState<'asc' | 'desc'>('desc');
@@ -102,8 +103,8 @@ export default function Players() {
       {/* summary cards */}
       {summary && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          <Kpi label="Total players" value={num(summary.totalPlayers)} />
-          <Kpi label="Active today" value={num(summary.activeToday)} tone="text-win" sub={`${summary.active7d} this week`} />
+          <Kpi label="Total players" value={num(summary.totalPlayers)} sub={`${summary.onlineNow} online now`} />
+          <Kpi label="Online now" value={`🟢 ${num(summary.onlineNow)}`} tone="text-win" sub={`${summary.activeToday} active today`} />
           <Kpi label="New (7 days)" value={num(summary.new7d)} tone="text-accent-glow" />
           <Kpi label="Balance held" value={inrCompact(summary.totalBalance)} tone="text-gold" />
           <Kpi label="House profit" value={inrCompact(summary.houseProfit)} tone={summary.houseProfit >= 0 ? 'text-win' : 'text-loss'} />
@@ -145,7 +146,10 @@ export default function Players() {
               <tr key={r.userId} onClick={() => setSelected(r.userId)} className="cursor-pointer border-b border-white/5 hover:bg-base-700/40">
                 <td className="px-3 py-2.5">
                   <div className="flex items-center gap-2">
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-base-700 text-sm">{r.avatar ?? '👤'}</span>
+                    <span className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-base-700 text-sm">
+                      {r.avatar ?? '👤'}
+                      {r.online && <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border border-base-900 bg-win" title="Online now" />}
+                    </span>
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
                         <span className="truncate font-semibold text-white/90">{r.username}</span>
@@ -174,6 +178,8 @@ export default function Players() {
       <p className="text-xs text-white/30">
         💡 <b>House P/L</b> = your profit from that player (wagered − won). <b>Ahead of house</b> = players currently net-positive (watch for big withdrawals). Click a row to manage.
       </p>
+
+      <Retention />
 
       {selected && <PlayerDetail userId={selected} onClose={() => setSelected(null)} onChanged={refresh} />}
     </div>

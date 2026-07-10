@@ -75,7 +75,7 @@ export const treasury = asyncHandler(async (_req: Request, res: Response) => {
 
   const [byTypeRaw, balAgg, roundsAgg, pendingAgg, dailyRaw, topBalances] = await Promise.all([
     Transaction.aggregate([{ $group: { _id: '$type', total: { $sum: '$amount' }, count: { $sum: 1 } } }]),
-    User.aggregate([{ $group: { _id: null, total: { $sum: '$balance' }, players: { $sum: 1 } } }]),
+    User.aggregate([{ $match: { role: { $ne: 'admin' } } }, { $group: { _id: null, total: { $sum: '$balance' }, players: { $sum: 1 } } }]),
     Round.aggregate([{ $match: { status: 'crashed' } }, { $group: { _id: null, wagered: { $sum: '$totalWagered' }, payout: { $sum: '$totalPayout' }, rounds: { $sum: 1 } } }]),
     CryptoTransaction.aggregate([{ $match: { type: 'withdrawal', status: 'pending' } }, { $group: { _id: null, total: { $sum: '$inrAmount' }, count: { $sum: 1 } } }]),
     Transaction.aggregate([
@@ -83,7 +83,7 @@ export const treasury = asyncHandler(async (_req: Request, res: Response) => {
       { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }, deposits: { $sum: { $cond: [{ $eq: ['$type', 'deposit'] }, '$amount', 0] } }, withdrawals: { $sum: { $cond: [{ $eq: ['$type', 'withdraw'] }, { $abs: '$amount' }, 0] } } } },
       { $sort: { _id: 1 } },
     ]),
-    User.find().sort({ balance: -1 }).limit(8).select('username balance').lean(),
+    User.find({ role: { $ne: 'admin' } }).sort({ balance: -1 }).limit(8).select('username balance').lean(),
   ]);
 
   const byType: Record<string, { total: number; count: number }> = {};
