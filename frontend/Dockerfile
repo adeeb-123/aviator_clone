@@ -1,7 +1,7 @@
 FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 
 FROM node:20-alpine AS build
 WORKDIR /app
@@ -26,5 +26,7 @@ ENV HOSTNAME=0.0.0.0
 COPY --from=build /app/public ./public
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
+# Drop root: Next's standalone server runs fine as the unprivileged `node` user.
+USER node
 EXPOSE 3000
 CMD ["node", "server.js"]

@@ -9,6 +9,7 @@ import { AdminAudit } from '../models/AdminAudit';
 import { PromoCode } from '../models/PromoCode';
 import { CryptoTransaction } from '../models/CryptoTransaction';
 import { adjustBalance } from '../services/ledger';
+import { safeSearchRegex, USER_PUBLIC_SELECT } from '../utils/sanitize';
 import { getActiveSeed, rotateSeed } from '../services/seedManager';
 import { getGameEngine } from '../services/gameEngine';
 import { cfg, updateConfig } from '../services/runtimeConfig';
@@ -120,8 +121,9 @@ export const treasury = asyncHandler(async (_req: Request, res: Response) => {
 
 export const listUsers = asyncHandler(async (req: Request, res: Response) => {
   const q = (req.query.q as string) ?? '';
-  const filter = q ? { $or: [{ username: new RegExp(q, 'i') }, { email: new RegExp(q, 'i') }] } : {};
-  const users = await User.find(filter).sort({ createdAt: -1 }).limit(50).lean();
+  const rx = q ? safeSearchRegex(q) : null;
+  const filter = rx ? { $or: [{ username: rx }, { email: rx }] } : {};
+  const users = await User.find(filter).select(USER_PUBLIC_SELECT).sort({ createdAt: -1 }).limit(50).lean();
   res.json({ users });
 });
 

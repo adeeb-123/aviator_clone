@@ -35,19 +35,29 @@ export async function adjustBalance(params: {
     throw new AppError('Insufficient balance', 400);
   }
 
-  await Transaction.create(
-    [
-      {
-        userId,
-        type,
-        amount,
-        balanceAfter: updated.balance,
-        description,
-        reference,
-      },
-    ],
-    { session: session ?? undefined },
-  );
+  try {
+    await Transaction.create(
+      [
+        {
+          userId,
+          type,
+          amount,
+          balanceAfter: updated.balance,
+          description,
+          reference,
+        },
+      ],
+      { session: session ?? undefined },
+    );
+  } catch (err) {
+    // The balance already moved but the ledger row failed to write. Inside a
+    // transaction the caller's session rolls both back; without one, reverse the
+    // $inc here so balance and ledger never drift apart (money integrity > liveness).
+    if (!session) {
+      await User.updateOne({ _id: userId }, { $inc: { balance: -amount } });
+    }
+    throw err;
+  }
 
   // Operator alerts (fire-and-forget): high-balance crossing, large withdrawal/deposit.
   alertBalanceEvent({

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Header from '@/components/Header';
+import TwoFactorSettings from '@/components/TwoFactorSettings';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/store';
 
@@ -70,6 +71,8 @@ export default function ProfilePage() {
             {msg && <span className="text-sm text-win">{msg}</span>}
           </div>
         </div>
+
+        <TwoFactorSettings />
       </main>
     </div>
   );

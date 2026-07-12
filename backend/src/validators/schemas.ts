@@ -18,6 +18,26 @@ export const loginSchema = z.object({
   twoFactorCode: z.string().optional(),
 });
 
+export const forgotPasswordSchema = z.object({
+  email: z.string().email('Enter a valid email address'),
+});
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(1, 'Missing reset token'),
+  password: z.string()
+    .min(8, 'Password must be at least 8 characters')
+    .max(100, 'Password is too long (max 100 characters)'),
+});
+
+export const enable2faSchema = z.object({
+  code: z.string().min(6).max(8),
+});
+
+export const disable2faSchema = z.object({
+  password: z.string().min(1, 'Enter your password'),
+  code: z.string().min(6).max(8),
+});
+
 export const updateProfileSchema = z.object({
   avatar: z.string().max(300).optional(), // emoji or image URL
   bio: z.string().max(280).optional(),
@@ -35,7 +55,11 @@ export const depositSchema = z.object({
 });
 
 export const withdrawSchema = z.object({
-  amount: z.number().positive(),
+  amount: z.number()
+    .finite('Enter a valid amount')
+    .positive('Amount must be positive')
+    .min(50, 'Minimum withdrawal is ₹50')
+    .max(200000, 'Maximum single withdrawal is ₹2,00,000'),
 });
 
 export const transferSchema = z.object({

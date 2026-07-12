@@ -9,7 +9,7 @@ interface AuthState {
   user: User | null;
   loading: boolean;
   hydrate: () => Promise<void>;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, twoFactorCode?: string) => Promise<void>;
   register: (username: string, email: string, password: string, referralCode?: string) => Promise<void>;
   logout: () => Promise<void>;
   setUser: (u: User | null) => void;
@@ -31,8 +31,12 @@ export const useAuth = create<AuthState>((set, get) => ({
       set({ user: null, loading: false });
     }
   },
-  login: async (email, password) => {
-    const { data } = await api.post('/auth/login', { email, password });
+  login: async (email, password, twoFactorCode) => {
+    const { data } = await api.post('/auth/login', {
+      email,
+      password,
+      ...(twoFactorCode ? { twoFactorCode } : {}),
+    });
     setAccessToken(data.accessToken);
     reauthSocket();
     set({ user: data.user });

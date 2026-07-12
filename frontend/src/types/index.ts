@@ -7,6 +7,7 @@ export interface User {
   bio?: string;
   role: 'user' | 'admin';
   isVerified: boolean;
+  twoFactorEnabled?: boolean;
   vipTier: number;
   referralCode: string;
   favorites: FavoriteStrategy[];

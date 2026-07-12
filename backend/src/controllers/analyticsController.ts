@@ -8,6 +8,7 @@ import { CryptoTransaction } from '../models/CryptoTransaction';
 import { getGameEngine } from '../services/gameEngine';
 import { isOnline, onlineCount } from '../socket/index';
 import { computeCrashPoint } from '../utils/provablyFair';
+import { safeSearchRegex } from '../utils/sanitize';
 import { asyncHandler } from '../middleware/error';
 import { notFound } from '../utils/errors';
 
@@ -256,7 +257,7 @@ export const players = asyncHandler(async (req: Request, res: Response) => {
         },
       },
     ]),
-    User.find(q ? { $or: [{ username: new RegExp(q, 'i') }, { email: new RegExp(q, 'i') }] } : {})
+    User.find(q ? (() => { const rx = safeSearchRegex(q); return { $or: [{ username: rx }, { email: rx }] }; })() : {})
       .select('username email avatar balance role isBanned isSuspended chatMutedUntil vipTier lastActiveAt createdAt')
       .lean(),
   ]);
@@ -356,7 +357,8 @@ export const players = asyncHandler(async (req: Request, res: Response) => {
  */
 export const playerDetail = asyncHandler(async (req: Request, res: Response) => {
   const { userId } = req.params;
-  const user = await User.findById(userId).lean();
+  // .lean() bypasses the toJSON scrubber, so exclude secrets explicitly.
+  const user = await User.findById(userId).select('-passwordHash -refreshTokenId -emailVerifyToken').lean();
   if (!user) throw notFound('User not found');
   const oid = new Types.ObjectId(userId);
 

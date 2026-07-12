@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyAccessToken, AccessPayload } from '../utils/jwt';
 import { unauthorized, forbidden } from '../utils/errors';
+import { env } from '../config/env';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -26,6 +27,10 @@ export function authenticate(req: Request, _res: Response, next: NextFunction): 
 export function requireAdmin(req: Request, _res: Response, next: NextFunction): void {
   if (!req.user) return next(unauthorized());
   if (req.user.role !== 'admin') return next(forbidden('Admin access required'));
+  // Admin APIs additionally require the session to have satisfied 2FA.
+  if (env.enforceAdminMfa && !req.user.mfa) {
+    return next(forbidden('Admin access requires two-factor authentication. Enable 2FA and log in again.'));
+  }
   next();
 }
 

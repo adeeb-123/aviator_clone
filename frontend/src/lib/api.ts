@@ -44,6 +44,12 @@ api.interceptors.response.use(
   (res) => res,
   async (error) => {
     const original = error.config;
+    // Never auto-refresh/redirect on the auth endpoints themselves — a 401 there is
+    // a real answer (bad credentials, 2FA required, expired reset link) the caller
+    // needs to see, not a stale-token signal.
+    if (typeof original?.url === 'string' && original.url.includes('/auth/')) {
+      return Promise.reject(error);
+    }
     if (error.response?.status === 401 && original && !original._retry && !refreshing) {
       original._retry = true;
       refreshing = true;

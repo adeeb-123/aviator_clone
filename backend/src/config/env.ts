@@ -55,9 +55,13 @@ export const env = {
     dailyCap: parseFloat(process.env.DAILY_REWARD_CAP ?? '100'),
   },
 
-  // Admin "force crash" overrides provably-fair — keep it ON only in dev/testing.
-  // Set ALLOW_FORCE_CRASH=false in production.
-  allowForceCrash: process.env.ALLOW_FORCE_CRASH !== 'false',
+  // Require admins to have TOTP 2FA to reach admin APIs. Default on; set
+  // ENFORCE_ADMIN_MFA=false to bootstrap the very first admin before enrolling.
+  enforceAdminMfa: process.env.ENFORCE_ADMIN_MFA !== 'false',
+
+  // Admin "force crash" overrides provably-fair. It is ALWAYS disabled in production
+  // (a deployed build can never manipulate outcomes), regardless of the env var.
+  allowForceCrash: process.env.NODE_ENV !== 'production' && process.env.ALLOW_FORCE_CRASH !== 'false',
 
   admin: {
     email: process.env.ADMIN_EMAIL ?? 'admin@aviator.local',
@@ -65,3 +69,17 @@ export const env = {
     password: process.env.ADMIN_PASSWORD ?? 'Admin123!',
   },
 };
+
+// Fail fast: never let a production build boot with the built-in dev secrets or a
+// weak (short) JWT secret — a known/guessable signing key lets anyone forge admin
+// tokens. This runs at import time so a misconfigured deploy crashes on startup.
+if (env.isProd) {
+  const weak: string[] = [];
+  if (!process.env.JWT_SECRET || env.jwtSecret === 'dev_access_secret' || env.jwtSecret.length < 32) weak.push('JWT_SECRET');
+  if (!process.env.JWT_REFRESH_SECRET || env.jwtRefreshSecret === 'dev_refresh_secret' || env.jwtRefreshSecret.length < 32) weak.push('JWT_REFRESH_SECRET');
+  if (env.jwtSecret === env.jwtRefreshSecret) weak.push('JWT_SECRET must differ from JWT_REFRESH_SECRET');
+  if (env.admin.password === 'Admin123!') weak.push('ADMIN_PASSWORD');
+  if (weak.length) {
+    throw new Error(`Refusing to start in production with insecure secrets: ${weak.join(', ')}. Set strong values (≥32 chars).`);
+  }
+}

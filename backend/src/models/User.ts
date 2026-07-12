@@ -20,9 +20,16 @@ export interface IUser extends Document {
   isBanned: boolean;
   isSuspended: boolean;
   twoFactorEnabled: boolean;
+  twoFactorSecret?: string; // active TOTP secret (set once enrollment is verified)
+  twoFactorTempSecret?: string; // pending secret during enrollment, before first verify
   vipTier: number;
   refreshTokenId?: string;
   emailVerifyToken?: string;
+  failedLoginCount: number;
+  lockUntil?: Date;
+  passwordResetToken?: string; // sha256 of the emailed token
+  passwordResetExpires?: Date;
+  passwordChangedAt?: Date;
   referralCode: string;
   referredBy?: Types.ObjectId;
   favorites: FavoriteStrategy[];
@@ -63,9 +70,16 @@ const userSchema = new Schema<IUser>(
     isBanned: { type: Boolean, default: false },
     isSuspended: { type: Boolean, default: false },
     twoFactorEnabled: { type: Boolean, default: false },
+    twoFactorSecret: { type: String, select: false },
+    twoFactorTempSecret: { type: String, select: false },
     vipTier: { type: Number, default: 0 },
     refreshTokenId: { type: String },
     emailVerifyToken: { type: String },
+    failedLoginCount: { type: Number, default: 0 },
+    lockUntil: { type: Date },
+    passwordResetToken: { type: String, select: false },
+    passwordResetExpires: { type: Date, select: false },
+    passwordChangedAt: { type: Date },
     referralCode: { type: String, unique: true, index: true },
     referredBy: { type: Schema.Types.ObjectId, ref: 'User' },
     favorites: { type: [favoriteSchema], default: [] },
@@ -96,6 +110,12 @@ userSchema.set('toJSON', {
     delete r.passwordHash;
     delete r.refreshTokenId;
     delete r.emailVerifyToken;
+    delete r.twoFactorSecret;
+    delete r.twoFactorTempSecret;
+    delete r.passwordResetToken;
+    delete r.passwordResetExpires;
+    delete r.failedLoginCount;
+    delete r.lockUntil;
     delete r.__v;
     return r;
   },

@@ -105,11 +105,13 @@ export const webhook = asyncHandler(async (req: Request, res: Response) => {
 /** Withdraw instantly debits the in-app balance (no real payout rails in the sandbox). */
 export const withdraw = asyncHandler(async (req: Request, res: Response) => {
   const { amount } = req.body as { amount: number };
+  // Round to paise to avoid float dust; schema already bounds min/max/positivity.
+  const amt = Math.round(amount * 100) / 100;
   const balance = await adjustBalance({
     userId: req.user!.sub,
-    amount: -amount,
+    amount: -amt,
     type: 'withdraw',
     description: 'Withdrawal',
   });
-  res.json({ balance, message: `Withdrew ₹${amount.toFixed(2)}` });
+  res.json({ balance, message: `Withdrew ₹${amt.toFixed(2)}` });
 });
