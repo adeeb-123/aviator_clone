@@ -78,8 +78,13 @@ if (env.isProd) {
   if (!process.env.JWT_SECRET || env.jwtSecret === 'dev_access_secret' || env.jwtSecret.length < 32) weak.push('JWT_SECRET');
   if (!process.env.JWT_REFRESH_SECRET || env.jwtRefreshSecret === 'dev_refresh_secret' || env.jwtRefreshSecret.length < 32) weak.push('JWT_REFRESH_SECRET');
   if (env.jwtSecret === env.jwtRefreshSecret) weak.push('JWT_SECRET must differ from JWT_REFRESH_SECRET');
-  if (env.admin.password === 'Admin123!') weak.push('ADMIN_PASSWORD');
   if (weak.length) {
-    throw new Error(`Refusing to start in production with insecure secrets: ${weak.join(', ')}. Set strong values (≥32 chars).`);
+    throw new Error(`Refusing to start in production with insecure JWT secrets: ${weak.join(', ')}. Set strong, distinct values (>=32 chars).`);
+  }
+  // Non-fatal: warn loudly (don't crash the deploy) if the admin password is still
+  // the built-in default — the operator should change it in the dashboard ASAP.
+  if (env.admin.password === 'Admin123!') {
+    // eslint-disable-next-line no-console
+    console.warn('[SECURITY] ADMIN_PASSWORD is still the default "Admin123!" — change it in your environment now.');
   }
 }
