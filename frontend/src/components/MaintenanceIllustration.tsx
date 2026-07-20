@@ -1,6 +1,6 @@
 'use client';
 
-import { motion, useReducedMotion, type Transition } from 'framer-motion';
+import { motion, useReducedMotion, type Transition, type TargetAndTransition } from 'framer-motion';
 
 /**
  * Animated "developer at a desk" scene, drawn as inline SVG so it scales crisply
@@ -10,7 +10,7 @@ import { motion, useReducedMotion, type Transition } from 'framer-motion';
 export default function MaintenanceIllustration({ className = '' }: { className?: string }) {
   const reduce = useReducedMotion();
   // Helper: only attach animate/transition props when motion is allowed.
-  const loop = (animate: Record<string, unknown>, transition: Transition) =>
+  const loop = (animate: TargetAndTransition, transition: Transition) =>
     reduce ? {} : { animate, transition };
 
   const ease = 'easeInOut' as const;
