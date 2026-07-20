@@ -41,6 +41,13 @@ const online = new Map<string, number>();
 export const onlineUserIds = (): string[] => [...online.keys()];
 export const onlineCount = (): number => online.size;
 export const isOnline = (userId: string): boolean => online.has(userId);
+
+// Broadcast helper — lets non-socket code (e.g. admin controllers) push a global
+// event (used to flip maintenance mode live for every connected client).
+let ioRef: Server | null = null;
+export function broadcast(event: string, data: unknown): void {
+  ioRef?.emit(event, data);
+}
 function rateLimited(socket: Socket, action: string): boolean {
   const cfg = RATE[action];
   if (!cfg) return false;
@@ -54,6 +61,7 @@ function rateLimited(socket: Socket, action: string): boolean {
 }
 
 export async function setupSocket(io: Server): Promise<void> {
+  ioRef = io;
   // Redis adapter for horizontal scaling (skipped if Redis is unavailable —
   // single-instance dev mode still works without it).
   if (redis && isRedisAvailable()) {

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { inr } from '@/lib/format';
+import MaintenanceSettings from './MaintenanceSettings';
 
 interface SBMarket { id: string; threshold: number; payout: number; enabled: boolean }
 interface Config {
@@ -60,6 +61,9 @@ export default function Settings() {
 
   return (
     <div className="space-y-5">
+      {/* Maintenance mode — global kill-switch */}
+      <MaintenanceSettings />
+
       {/* Live risk */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Kpi label="Engine" value={risk?.phase ?? '—'} />

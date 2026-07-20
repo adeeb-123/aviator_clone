@@ -5,6 +5,7 @@ import cookieParser from 'cookie-parser';
 import mongoSanitize from 'express-mongo-sanitize';
 import { env } from './config/env';
 import { globalLimiter } from './middleware/rateLimit';
+import { maintenanceGuard } from './middleware/maintenance';
 import { notFoundHandler, errorHandler } from './middleware/error';
 import { webhook } from './controllers/paymentController';
 
@@ -33,6 +34,7 @@ import adminRoutes from './routes/admin';
 import tournamentRoutes from './routes/tournament';
 import cryptoRoutes from './routes/crypto';
 import paymentRoutes from './routes/payment';
+import maintenanceRoutes from './routes/maintenance';
 
 export function createApp(): Application {
   const app = express();
@@ -77,6 +79,13 @@ export function createApp(): Application {
   app.use(globalLimiter);
 
   app.get('/health', (_req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
+
+  // Public maintenance state (must be readable even while under maintenance).
+  app.use('/api/maintenance', maintenanceRoutes);
+
+  // Global maintenance gate — 503s public API traffic when maintenance is on,
+  // while auth/admin/health/maintenance routes stay open for operators.
+  app.use(maintenanceGuard);
 
   app.use('/api/auth', authRoutes);
   app.use('/api/users', userRoutes);

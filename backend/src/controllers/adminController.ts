@@ -12,7 +12,8 @@ import { adjustBalance } from '../services/ledger';
 import { safeSearchRegex, USER_PUBLIC_SELECT } from '../utils/sanitize';
 import { getActiveSeed, rotateSeed } from '../services/seedManager';
 import { getGameEngine } from '../services/gameEngine';
-import { cfg, updateConfig } from '../services/runtimeConfig';
+import { cfg, updateConfig, maintenanceState } from '../services/runtimeConfig';
+import { broadcast as socketBroadcast } from '../socket/index';
 import { getPot, setPot } from '../services/jackpotService';
 import { logAdmin } from '../services/adminAudit';
 import { env } from '../config/env';
@@ -214,8 +215,22 @@ export const getConfig = asyncHandler(async (_req: Request, res: Response) => {
 });
 
 export const setConfig = asyncHandler(async (req: Request, res: Response) => {
-  const config = await updateConfig(req.body ?? {});
-  logAdmin(req, 'config-update', '', req.body);
+  const body = req.body ?? {};
+  const touchesMaintenance = body.maintenanceMode !== undefined || body.maintenanceMessage !== undefined;
+  const wasOn = cfg().maintenanceMode;
+
+  const config = await updateConfig(body);
+
+  if (touchesMaintenance) {
+    const state = maintenanceState();
+    // Flip every connected client instantly.
+    socketBroadcast('maintenance:update', state);
+    if (state.maintenanceMode !== wasOn) {
+      logAdmin(req, state.maintenanceMode ? 'maintenance-on' : 'maintenance-off', state.maintenanceMessage);
+    }
+  } else {
+    logAdmin(req, 'config-update', '', body);
+  }
   res.json({ config });
 });
 

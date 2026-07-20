@@ -33,6 +33,10 @@ export interface RuntimeConfig {
   blockAdminBetting: boolean;
   chatProfanityFilter: boolean;
   bannedWords: string[];
+  // ── maintenance mode (global kill-switch) ──
+  maintenanceMode: boolean;
+  maintenanceMessage: string;
+  maintenanceUpdatedAt: string; // ISO timestamp of the last maintenance change
   // ── side bets (prop bets on the crash point) ──
   sideBetsEnabled: boolean;
   sideBetMin: number;
@@ -52,6 +56,8 @@ export interface RuntimeConfig {
 }
 
 const DEFAULT_BANNED = ['fuck', 'shit', 'bitch', 'asshole', 'bastard', 'cunt', 'dick', 'scam', 'rigged'];
+
+export const DEFAULT_MAINTENANCE_MESSAGE = 'The Dev is working on this buddy';
 
 // Payouts sit just under the threshold so the house keeps an edge; admins can tune them.
 const DEFAULT_MARKETS: SideBetMarket[] = [
@@ -77,6 +83,9 @@ let cache: RuntimeConfig = {
   blockAdminBetting: true,
   chatProfanityFilter: true,
   bannedWords: DEFAULT_BANNED,
+  maintenanceMode: false,
+  maintenanceMessage: DEFAULT_MAINTENANCE_MESSAGE,
+  maintenanceUpdatedAt: new Date(0).toISOString(),
   sideBetsEnabled: true,
   sideBetMin: 10,
   sideBetMax: 1000,
@@ -94,6 +103,15 @@ let cache: RuntimeConfig = {
 
 export function cfg(): RuntimeConfig {
   return cache;
+}
+
+/** Public-safe maintenance snapshot (no other config leaked). */
+export function maintenanceState(): { maintenanceMode: boolean; maintenanceMessage: string; updatedAt: string } {
+  return {
+    maintenanceMode: cache.maintenanceMode,
+    maintenanceMessage: cache.maintenanceMessage,
+    updatedAt: cache.maintenanceUpdatedAt,
+  };
 }
 
 /** Load persisted overrides into the in-memory cache (call once at startup). */
@@ -122,6 +140,20 @@ export async function updateConfig(patch: Partial<RuntimeConfig>): Promise<Runti
   if (patch.blockAdminBetting !== undefined) next.blockAdminBetting = Boolean(patch.blockAdminBetting);
   if (patch.chatProfanityFilter !== undefined) next.chatProfanityFilter = Boolean(patch.chatProfanityFilter);
   if (Array.isArray(patch.bannedWords)) next.bannedWords = patch.bannedWords.map((w) => String(w).toLowerCase().trim()).filter(Boolean).slice(0, 200);
+
+  // ── maintenance mode ── (bump updatedAt only when the state actually changes)
+  let maintenanceChanged = false;
+  if (patch.maintenanceMode !== undefined) {
+    const val = Boolean(patch.maintenanceMode);
+    if (val !== cache.maintenanceMode) maintenanceChanged = true;
+    next.maintenanceMode = val;
+  }
+  if (patch.maintenanceMessage !== undefined) {
+    const msg = String(patch.maintenanceMessage).slice(0, 500).trim() || DEFAULT_MAINTENANCE_MESSAGE;
+    if (msg !== cache.maintenanceMessage) maintenanceChanged = true;
+    next.maintenanceMessage = msg;
+  }
+  if (maintenanceChanged) next.maintenanceUpdatedAt = new Date().toISOString();
 
   if (patch.sideBetsEnabled !== undefined) next.sideBetsEnabled = Boolean(patch.sideBetsEnabled);
   if (patch.sideBetMin !== undefined) next.sideBetMin = clampNum(patch.sideBetMin, 1, 1_000_000, cache.sideBetMin);

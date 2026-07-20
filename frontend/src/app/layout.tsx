@@ -3,6 +3,8 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { Providers } from './providers';
 import { I18nProvider } from '@/lib/i18n';
+import { MaintenanceProvider } from '@/lib/maintenance';
+import MaintenanceGate from '@/components/MaintenanceGate';
 import Announcements from '@/components/Announcements';
 import Notifications from '@/components/Notifications';
 
@@ -23,9 +25,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="font-sans antialiased">
         <I18nProvider>
           <Providers>
-            <Announcements />
-            <Notifications />
-            {children}
+            <MaintenanceProvider>
+              <MaintenanceGate>
+                <Announcements />
+                <Notifications />
+                {children}
+              </MaintenanceGate>
+            </MaintenanceProvider>
           </Providers>
         </I18nProvider>
       </body>
